@@ -11,6 +11,8 @@ ORDNER = Path(__file__).resolve().parent
 html = (ORDNER / "anleitung.html").read_text(encoding="utf-8")
 # Die PDF-Standardschrift kennt diese Zeichen nicht
 html = html.replace("→", "›").replace(" ▾", "")
+for nr, zeichen in enumerate("①②③", 1):
+    html = html.replace(zeichen, f"({nr})")
 # xhtml2pdf rechnet Abstände anders als ein Browser: eigene, kompakte Druckformate
 DRUCK = """<style>
 body { font-size: 10.5pt; line-height: 1.35; padding: 0; }
