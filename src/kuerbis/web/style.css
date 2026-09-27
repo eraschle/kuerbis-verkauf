@@ -90,7 +90,7 @@ main { flex: 1; min-height: 0; padding: 16px 20px; overflow: auto; }
 }
 
 /* Erfassung */
-.zweispaltig { display: grid; grid-template-columns: minmax(430px, 520px) 1fr; gap: 16px; flex: 1; min-height: 0; }
+.zweispaltig { display: grid; grid-template-columns: 570px minmax(0, 1fr); gap: 16px; flex: 1; min-height: 0; }
 .tabelle-rahmen {
   background: var(--karte); border: 1px solid var(--rahmen); border-radius: var(--radius);
   overflow: auto; min-height: 0;
@@ -99,7 +99,7 @@ main { flex: 1; min-height: 0; padding: 16px 20px; overflow: auto; }
 .seite { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow: auto; }
 
 table { border-collapse: separate; border-spacing: 0; width: 100%; font-variant-numeric: tabular-nums; }
-th, td { padding: 5px 10px; text-align: left; white-space: nowrap; }
+th, td { padding: 5px 8px; text-align: left; white-space: nowrap; }
 th {
   position: sticky; top: 0; background: var(--karte); z-index: 1;
   font-weight: 600; color: var(--tinte-2); font-size: 12px; border-bottom: 1px solid var(--linie);
@@ -113,11 +113,20 @@ th {
 .tage td.wo { color: var(--gedaempft); }
 .tage td.wochentotal { font-weight: 650; }
 .tage input {
-  width: 90px; text-align: right; font: inherit; font-variant-numeric: tabular-nums;
+  width: 84px; text-align: right; font: inherit; font-variant-numeric: tabular-nums;
   padding: 3px 6px; border: 1px solid transparent; border-radius: 4px; background: transparent;
 }
 .tage input:hover { border-color: #d6d5ce; }
 .tage input:focus { outline: none; border-color: var(--akzent); background: #fff; box-shadow: 0 0 0 2px var(--akzent-hell); }
+.tage tfoot td {
+  position: sticky; bottom: 0; z-index: 1; background: var(--akzent-hell);
+  border-top: 2px solid var(--akzent); padding-top: 7px; padding-bottom: 7px;
+}
+.tage tfoot .wo { color: var(--akzent-dunkel); font-weight: 650; }
+.tage tfoot input { background: #fff; border-color: #e6c9b3; }
+.tage tfoot input[type="date"] { width: 118px; text-align: left; padding: 2px 2px; }
+.neu-hilfe { font-size: 12px; }
+.tage td.leer-hinweis { text-align: center; color: var(--gedaempft); padding: 24px 10px; }
 .tage input.ungueltig { border-color: var(--fehler); background: #fbeeee; }
 .tage input.gespeichert { animation: blitz 0.8s; }
 @keyframes blitz { from { background: #e3f2e3; } to { background: transparent; } }
@@ -180,3 +189,16 @@ dialog input { font: inherit; padding: 7px 9px; border: 1px solid #d6d5ce; borde
 code { background: #f0efec; padding: 2px 6px; border-radius: 4px; word-break: break-all; }
 .konflikte { max-height: 45vh; }
 .konflikte label.wahl { display: flex; flex-direction: row; justify-content: flex-end; align-items: center; gap: 6px; margin: 0; font-weight: 400; cursor: pointer; }
+
+/* MIN/MAX-Bereich */
+.werkzeug select#anzahl-jahre { font-weight: 400; }
+.bereich-info { font-size: 13px; color: var(--tinte-2); display: inline-flex; gap: 12px; align-items: center; }
+.bereich-info .flaeche { width: 18px; height: 10px; border-radius: 2px; background: rgba(137, 135, 129, 0.22); border: 1px dashed #898781; }
+.marke-mm { font-size: 11px; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: #efece6; color: var(--tinte-2); }
+.marke-mm.max { background: #e3f0e3; color: #006300; }
+.marke-mm.min { background: #f6e6e2; color: #9a3b1c; }
+.bereich-liste { max-height: 50vh; margin-top: 4px; }
+.bereich-liste label { flex-direction: row; align-items: center; gap: 8px; margin: 0; font-weight: 400; cursor: pointer; }
+.uebersicht tr.zeile-max td { background: #eef6ee; }
+.uebersicht tr.zeile-min td { background: #fbefeb; }
+.legende i.gestrichelt { background: none !important; border-top: 2px dashed #898781; height: 0; }

@@ -6,7 +6,7 @@ Status: Freigegeben
 ## Ziel
 
 Die Excel-Datei `Kürbissverkauf 1998-2025.xlsx` wird durch ein Windows-Programm (.exe) ersetzt.
-Man erfasst jedes Jahr ab einem Startdatum die täglichen Einnahmen aus dem Hofkürbisverkauf,
+Man erfasst jedes Jahr die täglichen Einnahmen aus dem Hofkürbisverkauf,
 sieht pro Jahr ein Diagramm und kann die Jahre miteinander vergleichen. Die Daten lassen sich
 per Export/Import mit anderen Personen teilen.
 
@@ -37,23 +37,24 @@ Dasselbe Format dient als JSON-Export.
 - „Daten hierhin verschieben“: aktuelle Daten werden an den neuen Ort gespeichert (z. B. OneDrive-Ordner); existiert dort
   schon eine Datei, wird nachgefragt (überschreiben oder stattdessen öffnen).
 - „Vorhandene Datei öffnen“: eine bestehende Datendatei wird ab sofort verwendet.
-Der gewählte Pfad wird in `%APPDATA%\Kuerbisverkauf\einstellungen.json` gemerkt. Fehlt die Datei am gemerkten Ort
+Der gewählte Pfad wird in `%APPDATA%\Kuerbisverkauf\einstellungen.json` gemerkt (dort auch „Anzahl Jahre“ und
+die vom MIN/MAX-Bereich ausgenommenen Jahre). Fehlt die Datei am gemerkten Ort
 (z. B. USB-Stick nicht eingesteckt), meldet das Programm dies und bietet an, einen anderen Ort zu wählen.
 
 ```json
 {
   "format": "kuerbisverkauf",
-  "version": 1,
+  "version": 2,
   "saisons": {
     "2025": {
-      "start": "2025-08-25",
       "eintraege": { "2025-09-05": 45, "2025-09-06": 106 }
     }
   }
 }
 ```
 
-- Eine Saison = Jahr + Startdatum + Beträge pro Datum. Tage ohne Verkauf werden nicht gespeichert.
+- Eine Saison = Jahr + Beträge pro Datum (kein Startdatum; Version 1 mit `start` wird weiterhin gelesen, `start` ignoriert).
+  Tage ohne Eintrag werden nicht gespeichert.
 - Betrag leer = kein Eintrag. Betrag 0 = Verkaufstag ohne Einnahmen (zählt bei Tagen, Min und Mittel mit,
   wie im Blatt `Üb`). Negative Beträge werden abgelehnt.
 - Speichern ist sicher: zuerst in eine temporäre Datei schreiben, dann ersetzen. Die vorherige Version bleibt als
@@ -62,45 +63,61 @@ Der gewählte Pfad wird in `%APPDATA%\Kuerbisverkauf\einstellungen.json` gemerkt
 
 ## Berechnungen (wie in Excel)
 
-- **Woche**: Woche 1 = Startdatum bis Startdatum + 6 Tage, dann fortlaufende 7-Tage-Blöcke.
+- **Woche** = Kalenderwoche (ISO, Montag–Sonntag) im Jahr der Saison; Einträge Ende Dezember zählen als KW 53/54
+  weiter. Die Startdaten der alten Excel waren Montage, ihre „Wo n“ entsprechen also Kalenderwochen.
 - **Laufendes Total** pro Tag, **Wochentotal** pro Woche, **kumuliertes Wochentotal**.
 - **Statistik pro Jahr**: Min, Max, Mittel (über alle erfassten Tage, auch 0), Anzahl Verkaufstage, Total.
-- Die Saison ist so lang wie nötig: mindestens 16 Wochen, bei Einträgen danach entsprechend länger.
+- Die Saison reicht vom ersten bis zum letzten erfassten Tag; Lücken dazwischen werden als leere Tage angezeigt.
 
 ## Oberfläche
 
 Drei Ansichten, oben als Reiter umschaltbar:
 
 1. **Erfassung**
-   - Jahr auswählen, „Neue Saison“ (fragt nach dem Startdatum, vorgeschlagen wird der letzte Montag im August).
-     Das Startdatum lässt sich nachträglich ändern.
-   - Tabelle wie in Excel: Woche, Wochentag, Datum, Betrag (Eingabefeld), laufendes Total, Wochentotal.
+   - Jahr auswählen, „Neue Saison“ (fragt nur nach dem Jahr).
+   - Tabelle: KW, Wochentag, Datum, Betrag (Eingabefeld), laufendes Total, Wochentotal (am Sonntag bzw. letzten Tag).
+     Nur vom ersten bis zum letzten erfassten Tag, keine leeren Zeilen am Anfang/Ende.
+   - Darunter immer eine Zeile „Neuer Tag“: Datum vorbelegt mit dem Tag nach dem letzten Eintrag (leere Saison: heute
+     bzw. letzter Montag im August), änderbar (auch vor dem ersten Eintrag, muss im Saisonjahr liegen). Betrag + Enter
+     fügt den Tag an; die Zeile rückt weiter. Leeren eines Betrags entfernt den Tag (Tabelle schrumpft ggf.).
      Mit Enter/Pfeiltasten geht es zur nächsten Zeile. Der heutige Tag ist hervorgehoben.
    - Daneben das **Diagramm des Jahres**: Tagesbeträge als Balken plus laufendes Total als Linie.
    - Kennzahlen des Jahres (Total, Tage, Mittel, Max).
 2. **Vergleich**
-   - Liniendiagramm: laufendes Total über die Saisontage (Tag 1 = Startdatum), eine Linie pro Jahr.
+   - Liniendiagramm: laufendes Total, eine Linie pro Jahr. X-Achse = Kalenderwoche + Wochentag, damit gleiche
+     Wochentage übereinanderliegen (Achse beginnt am Montag der frühesten KW der gewählten Jahre, Beschriftung „KW n“;
+     Tooltip zeigt das echte Datum je Jahr). Jede Linie beginnt beim ersten und endet beim letzten Verkaufstag.
      Jahre per Checkbox wählbar (Standard: aktuelles Jahr + die 4 davor).
-   - Balkendiagramm: Jahrestotal aller Jahre.
+   - Auswahl „Letzte [N] Jahre“ (1–10, Standard 5, in den Einstellungen gemerkt); Jahre zusätzlich per Knopf
+     an-/abwählbar (höchstens 10 Linien).
+   - Farben nach Alter: laufendes Jahr kräftig orange (dicker), frühere Jahre Blau-Verlauf dunkel (letztes Jahr)
+     → hell (älter). Die Farbe hängt am Jahr, nicht an der Auswahl.
+   - **MIN/MAX-Bereich** als graue Fläche zwischen den Kurven des MIN- und des MAX-Jahres (gestrichelte Ränder),
+     immer sichtbar, zählt nicht als Linie. MIN/MAX = tiefstes/höchstes Jahrestotal der abgeschlossenen Jahre
+     (vor dem laufenden Kalenderjahr, nur Jahre mit Einträgen). Einzelne Jahre lassen sich im Dialog
+     „MIN/MAX-Jahre…“ ausnehmen (gemerkt in den Einstellungen).
+   - Balkendiagramm: Jahrestotal aller Jahre; MIN/MAX dunkel und beschriftet, laufendes Jahr hell.
 3. **Übersicht**
-   - Tabelle Wochentotale pro Jahr (Wo 1 … n) und Statistik pro Jahr (Min, Max, Mittel, Tage, Total), wie Blatt `Üb`.
+   - MIN-/MAX-Jahr sind in beiden Tabellen farbig markiert („▲ Max“, „▼ Min“); alle Jahre bleiben sichtbar.
+   - Tabelle Wochentotale pro Jahr (KW n … m) und Statistik pro Jahr (Min, Max, Mittel, Tage, Total), wie Blatt `Üb`.
 
 ## Import / Export
 
 Menüknöpfe „Exportieren…“ und „Importieren…“ mit den Windows-Dateidialogen.
 
 - **Export JSON**: die Datendatei, als exaktes Backup bzw. zum Teilen.
-- **Export Excel**: Blatt `Daten` (Jahr, Startdatum, Datum, Betrag), Blatt `Übersicht` (Wochentotale + Statistik).
+- **Export Excel**: Blatt `Daten` (Jahr, Datum, Betrag), Blatt `Übersicht` (Wochentotale je KW + Statistik).
+  Der Import liest auch das frühere Format mit Spalte Startdatum.
   Auch ohne das Programm lesbar.
 - **Import** erkennt das Format automatisch:
   - eigenes JSON,
   - eigenes Excel (Blatt `Daten`),
-  - die alte Excel-Datei (Blätter mit zweistelligen Jahresnamen; `98`/`99` → 1998/1999, sonst 20xx; C5 = Startdatum,
+  - die alte Excel-Datei (Blätter mit zweistelligen Jahresnamen; `98`/`99` → 1998/1999, sonst 20xx;
     Spalte C Datum, Spalte D Betrag; gelesen werden die gespeicherten Werte).
 - **Zusammenführen**:
   - Neue Jahre und neue Tage werden übernommen.
   - Gleicher Betrag: nichts passiert.
-  - Anderer Betrag oder anderes Startdatum: Konfliktliste (Datum, mein Wert, importierter Wert, Auswahl pro Zeile,
+  - Anderer Betrag: Konfliktliste (Datum, mein Wert, importierter Wert, Auswahl pro Zeile,
     dazu „alle meine behalten“ / „alle importierten übernehmen“). Erst nach Bestätigung wird gespeichert.
   - Danach eine Zusammenfassung (x Tage neu, y Konflikte gelöst).
 - Ungültige oder unbekannte Dateien ergeben eine verständliche Fehlermeldung; die Daten bleiben unverändert.
@@ -131,7 +148,7 @@ Die Oberfläche enthält keine Rechenlogik: Sie holt die berechneten Werte über
 - Import der alten Excel: Statistik jedes Jahres muss mit dem Blatt `Üb` übereinstimmen (Sollwerte werden zur Laufzeit
   aus der lokalen Datei gelesen; die Datei ist nicht im Repository, ohne sie wird der Test übersprungen).
 - Export → Import ergibt dieselben Daten (JSON und Excel).
-- Zusammenführen: neue Tage, gleiche Werte, Konflikte, Startdatum-Konflikt.
+- Zusammenführen: neue Tage, gleiche Werte, Konflikte.
 - Zum Schluss: .exe bauen und von Hand starten (Erfassen, Diagramm, Import, Export).
 
 ## Nicht im Umfang

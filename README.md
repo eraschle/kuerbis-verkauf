@@ -12,8 +12,14 @@ auf `master` automatisch gebaut (GitHub Actions, `.github/workflows/build.yml`).
 
 1. `Kuerbisverkauf.exe` starten (keine Installation nötig).
 2. Beim ersten Mal: **Importieren…** → die alte Excel-Datei (`Kürbissverkauf 1998-2025.xlsx`) wählen → **Übernehmen**.
-3. Jedes Jahr: **Neue Saison** → Startdatum bestätigen → Beträge pro Tag eintippen
+3. Jedes Jahr: **Neue Saison** → Jahr bestätigen → in der Zeile **Neu** Betrag eintippen und Enter drücken.
+   Das Datum ist mit dem Folgetag vorbelegt und kann geändert werden; die Tabelle wächst mit jedem Tag
    (Enter/Pfeiltasten springen zur nächsten Zeile, gespeichert wird automatisch).
+
+Wochen sind Kalenderwochen. Im **Vergleich** liegen gleiche Wochentage der Jahre übereinander
+(x-Achse nach KW), damit z. B. die Wochenenden direkt vergleichbar sind. Die graue Fläche zeigt den Bereich
+zwischen dem schwächsten und dem stärksten abgeschlossenen Jahr; untypische Jahre lassen sich unter
+*MIN/MAX-Jahre…* ausnehmen.
 
 **Teilen:** *Exportieren* → Excel (für alle lesbar) oder JSON (exaktes Backup). Die andere Person
 wählt *Importieren…*; bei abweichenden Werten erscheint eine Liste zur Auswahl.

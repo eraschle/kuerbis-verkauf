@@ -13,17 +13,6 @@ def konflikte_finden(meine: Daten, import_: Daten) -> list[dict]:
         s_mein = meine.saisons.get(jahr)
         if s_mein is None:
             continue
-        if s_mein.start != s_imp.start:
-            konflikte.append(
-                {
-                    "id": f"start:{jahr}",
-                    "jahr": jahr,
-                    "art": "start",
-                    "datum": None,
-                    "mein": s_mein.start.isoformat(),
-                    "import": s_imp.start.isoformat(),
-                }
-            )
         for tag in sorted(s_imp.eintraege):
             mein = s_mein.eintraege.get(tag)
             imp = s_imp.eintraege[tag]
@@ -52,12 +41,6 @@ def zusammenfuehren(meine: Daten, import_: Daten, wahl: dict[str, str]) -> tuple
             info["neue_jahre"] += 1
             info["neue_tage"] += len(s_imp.eintraege)
             continue
-        if s.start != s_imp.start:
-            if wahl.get(f"start:{jahr}") == "import":
-                s.start = s_imp.start
-                info["konflikte_import"] += 1
-            else:
-                info["konflikte_mein"] += 1
         for tag, betrag in s_imp.eintraege.items():
             mein = s.eintraege.get(tag)
             if mein is None:

@@ -1,73 +1,88 @@
-from datetime import date, timedelta
+from datetime import date
 
 import pytest
 
 from kuerbis.model import (
     Daten,
     Saison,
-    anzahl_wochen,
+    achsentag,
     betrag_normalisieren,
     daten_aus_dict,
     daten_zu_dict,
-    kumuliert_pro_tag,
+    kw,
+    naechster_tag,
     statistik,
     tageszeilen,
+    vergleichsreihe,
     vorgeschlagener_start,
     wochentotale,
 )
 
-START = date(2025, 8, 25)  # Montag
-
 
 def saison(**tage):
-    """tage: Offset in Tagen -> Betrag, z. B. saison(d0=10, d7=5)."""
-    return Saison(2025, START, {START + timedelta(int(k[1:])): v for k, v in tage.items()})
+    """tage: 'mmdd' -> Betrag, z. B. saison(m0905=45) für den 5. September 2025."""
+    return Saison(2025, {date(2025, int(k[1:3]), int(k[3:5])): v for k, v in tage.items()})
 
 
-def test_woche_1_umfasst_die_ersten_7_tage():
-    zeilen = tageszeilen(saison())
-    assert zeilen[0]["woche"] == 1
-    assert zeilen[6]["woche"] == 1
-    assert zeilen[7]["woche"] == 2
-    assert zeilen[0]["wochentag"] == "Montag"
-    assert zeilen[0]["datum"] == "2025-08-25"
+def test_kw_ist_iso_kalenderwoche():
+    assert kw(2025, date(2025, 9, 1)) == 36  # Montag
+    assert kw(2025, date(2025, 9, 7)) == 36  # Sonntag
+    assert kw(2025, date(2025, 9, 8)) == 37
 
 
-def test_saison_hat_mindestens_16_wochen():
-    s = saison()
-    assert anzahl_wochen(s) == 16
-    assert len(tageszeilen(s)) == 16 * 7
+def test_kw_zaehlt_ende_dezember_weiter():
+    # 29.12.2025 gehört nach ISO zu KW 1/2026 – in der Saison 2025 zählt sie als KW 53
+    assert kw(2025, date(2025, 12, 29)) == 53
 
 
-def test_saison_waechst_mit_spaeten_eintraegen():
-    s = saison(d120=5)  # Tag 121 -> Woche 18
-    assert anzahl_wochen(s) == 18
+def test_achsentag_gleicher_wochentag_gleiche_position():
+    samstag_kw37_2025 = date(2025, 9, 13)
+    samstag_kw37_2024 = date(2024, 9, 14)
+    assert achsentag(2025, samstag_kw37_2025) == achsentag(2024, samstag_kw37_2024) == 36 * 7 + 5
 
 
-def test_laufendes_total_nur_an_tagen_mit_betrag():
-    zeilen = tageszeilen(saison(d0=10, d2=5))
-    assert zeilen[0]["laufend"] == 10
-    assert zeilen[1]["laufend"] is None
-    assert zeilen[1]["betrag"] is None
-    assert zeilen[2]["laufend"] == 15
+def test_leere_saison_hat_keine_zeilen():
+    assert tageszeilen(saison()) == []
+    assert wochentotale(saison()) == {}
 
 
-def test_wochentotal_am_letzten_tag_der_woche():
-    zeilen = tageszeilen(saison(d0=10, d6=5, d7=3))
-    assert zeilen[6]["wochentotal"] == 15
-    assert zeilen[5]["wochentotal"] is None
-    assert zeilen[13]["wochentotal"] == 3
-    assert zeilen[20]["wochentotal"] is None  # Woche 3 ohne Umsatz
+def test_zeilen_nur_vom_ersten_bis_letzten_tag():
+    zeilen = tageszeilen(saison(m0905=45, m0908=10))  # Freitag bis Montag
+    assert [z["datum"] for z in zeilen] == ["2025-09-05", "2025-09-06", "2025-09-07", "2025-09-08"]
+    assert [z["betrag"] for z in zeilen] == [45, None, None, 10]
+    assert zeilen[0]["wochentag"] == "Freitag"
+    assert [z["kw"] for z in zeilen] == [36, 36, 36, 37]
 
 
-def test_wochentotale_liste():
-    w = wochentotale(saison(d0=10, d6=5, d7=3))
-    assert w[:3] == [15, 3, 0]
-    assert len(w) == 16
+def test_wochenstart_am_montag_und_in_erster_zeile():
+    zeilen = tageszeilen(saison(m0905=45, m0908=10))
+    assert [z["wochenstart"] for z in zeilen] == [True, False, False, True]
+
+
+def test_laufendes_total_nur_an_tagen_mit_eintrag():
+    zeilen = tageszeilen(saison(m0905=45, m0907=5))
+    assert [z["laufend"] for z in zeilen] == [45, None, 50]
+
+
+def test_wochentotal_am_sonntag_und_am_letzten_tag():
+    zeilen = tageszeilen(saison(m0905=45, m0907=5, m0909=3))
+    wt = [z["wochentotal"] for z in zeilen]
+    # Fr 5., Sa 6., So 7. | Mo 8., Di 9. (letzter Tag, Woche noch offen)
+    assert wt == [None, None, 50, None, 3]
+
+
+def test_woche_ohne_eintrag_zeigt_kein_wochentotal():
+    zeilen = tageszeilen(saison(m0905=1, m0915=2))
+    sonntag_14 = next(z for z in zeilen if z["datum"] == "2025-09-14")
+    assert sonntag_14["wochentotal"] is None
+
+
+def test_wochentotale_pro_kw():
+    assert wochentotale(saison(m0905=45, m0907=5, m0909=3, m0922=1)) == {36: 50, 37: 3, 38: 0, 39: 1}
 
 
 def test_statistik():
-    st = statistik(saison(d0=10, d1=20, d5=30))
+    st = statistik(saison(m0901=10, m0902=20, m0906=30))
     assert st == {"min": 10, "max": 30, "mittel": 20, "tage": 3, "total": 60}
 
 
@@ -75,9 +90,30 @@ def test_statistik_leer():
     assert statistik(saison()) == {"min": None, "max": None, "mittel": None, "tage": 0, "total": 0}
 
 
-def test_kumuliert_pro_tag():
-    assert kumuliert_pro_tag(saison(d0=10, d2=5)) == [10, 10, 15]
-    assert kumuliert_pro_tag(saison()) == []
+def test_null_ist_ein_verkaufstag():
+    s = saison(m0901=10, m0902=0, m0908=0)
+    assert statistik(s) == {"min": 0, "max": 10, "mittel": 3.33, "tage": 3, "total": 10}
+    zeilen = tageszeilen(s)
+    assert zeilen[1]["betrag"] == 0
+    assert zeilen[1]["laufend"] == 10
+    assert zeilen[-1]["wochentotal"] == 0  # Woche nur mit 0-Tag zeigt 0
+    assert zeilen[6]["wochentotal"] == 10
+
+
+def test_vergleichsreihe():
+    r = vergleichsreihe(saison(m0905=45, m0907=5))
+    assert r == {"erster_tag": achsentag(2025, date(2025, 9, 5)), "erstes_datum": "2025-09-05", "kumuliert": [45, 45, 50]}
+    assert vergleichsreihe(saison()) == {"erster_tag": None, "erstes_datum": None, "kumuliert": []}
+
+
+def test_naechster_tag():
+    assert naechster_tag(saison(m0905=45), heute=date(2026, 1, 1)) == date(2025, 9, 6)
+    assert naechster_tag(saison(), heute=date(2025, 9, 20)) == date(2025, 9, 20)  # heute im Saisonjahr
+    assert naechster_tag(saison(), heute=date(2026, 3, 1)) == vorgeschlagener_start(2025)
+
+
+def test_naechster_tag_bleibt_im_jahr():
+    assert naechster_tag(saison(m1231=1), heute=date(2026, 1, 5)) == date(2025, 12, 31)
 
 
 @pytest.mark.parametrize(
@@ -98,12 +134,22 @@ def test_betrag_normalisieren_ungueltig(eingabe):
 
 
 def test_rundlauf_dict():
-    d = Daten({2025: saison(d0=10, d3=12.5)})
+    d = Daten({2025: saison(m0901=10, m0904=12.5, m0905=0), 2026: Saison(2026, {})})
     obj = daten_zu_dict(d)
     assert obj["format"] == "kuerbisverkauf"
-    assert obj["saisons"]["2025"]["start"] == "2025-08-25"
-    assert obj["saisons"]["2025"]["eintraege"]["2025-08-28"] == 12.5
+    assert obj["version"] == 2
+    assert "start" not in obj["saisons"]["2025"]
+    assert obj["saisons"]["2025"]["eintraege"]["2025-09-04"] == 12.5
     assert daten_aus_dict(obj) == d
+
+
+def test_version_1_mit_startdatum_wird_gelesen():
+    obj = {
+        "format": "kuerbisverkauf",
+        "version": 1,
+        "saisons": {"2025": {"start": "2025-08-25", "eintraege": {"2025-09-01": 10}}},
+    }
+    assert daten_aus_dict(obj) == Daten({2025: saison(m0901=10)})
 
 
 def test_daten_aus_dict_falsches_format():
@@ -116,18 +162,18 @@ def test_vorgeschlagener_start_letzter_montag_im_august():
     assert vorgeschlagener_start(2026) == date(2026, 8, 31)
 
 
-def test_null_ist_ein_verkaufstag():
-    s = saison(d0=10, d1=0, d7=0)
-    st = statistik(s)
-    assert st == {"min": 0, "max": 10, "mittel": 3.33, "tage": 3, "total": 10}
-    zeilen = tageszeilen(s)
-    assert zeilen[1]["betrag"] == 0
-    assert zeilen[1]["laufend"] == 10
-    assert zeilen[13]["wochentotal"] == 0  # Woche nur mit 0-Tag zeigt 0
-    assert zeilen[20]["wochentotal"] is None  # Woche ohne Eintrag bleibt leer
-    assert anzahl_wochen(s) == 16
+def test_min_max_jahre_nur_abgeschlossene():
+    from kuerbis.model import min_max_jahre
 
-
-def test_null_bleibt_im_rundlauf():
-    d = Daten({2025: saison(d1=0)})
-    assert daten_aus_dict(daten_zu_dict(d)) == d
+    d = Daten(
+        {
+            2023: Saison(2023, {date(2023, 9, 1): 100}),
+            2024: Saison(2024, {date(2024, 9, 1): 300}),
+            2025: Saison(2025, {date(2025, 9, 1): 50}),
+            2026: Saison(2026, {date(2026, 9, 1): 999}),  # laufendes Jahr zählt nicht
+            2022: Saison(2022, {}),  # ohne Einträge zählt nicht
+        }
+    )
+    assert min_max_jahre(d, aktuelles_jahr=2026) == {"min": 2025, "max": 2024}
+    assert min_max_jahre(d, aktuelles_jahr=2026, ausgenommen=[2025]) == {"min": 2023, "max": 2024}
+    assert min_max_jahre(d, aktuelles_jahr=2023) == {"min": None, "max": None}

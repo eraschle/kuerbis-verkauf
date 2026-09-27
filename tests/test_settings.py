@@ -18,3 +18,21 @@ def test_kaputte_einstellung_ergibt_standard(tmp_path):
 
 def test_standardpfad_name():
     assert standard_datenpfad().name == "kuerbis-daten.json"
+
+
+def test_einstellung_rundlauf_und_standard(tmp_path):
+    from kuerbis.settings import einstellung_lesen, einstellung_setzen
+
+    assert einstellung_lesen("vergleich_jahre", 5, tmp_path) == 5
+    einstellung_setzen("vergleich_jahre", 8, tmp_path)
+    assert einstellung_lesen("vergleich_jahre", 5, tmp_path) == 8
+
+
+def test_einstellungen_bleiben_gegenseitig_erhalten(tmp_path):
+    from kuerbis.settings import einstellung_lesen, einstellung_setzen
+
+    einstellung_setzen("bereich_ausgenommen", [2000], tmp_path)
+    datenpfad_setzen(tmp_path / "d.json", tmp_path)
+    einstellung_setzen("vergleich_jahre", 3, tmp_path)
+    assert einstellung_lesen("bereich_ausgenommen", [], tmp_path) == [2000]
+    assert datenpfad_lesen(tmp_path) == tmp_path / "d.json"

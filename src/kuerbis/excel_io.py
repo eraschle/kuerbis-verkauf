@@ -13,10 +13,11 @@ import openpyxl
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
-from .model import Daten, Saison, anzahl_wochen, betrag_normalisieren, daten_aus_dict, statistik, wochentotale
+from .model import Daten, Saison, betrag_normalisieren, daten_aus_dict, statistik, wochentotale
 from .storage import speichern
 
-DATEN_KOPF = ["Jahr", "Startdatum", "Datum", "Betrag"]
+DATEN_KOPF = ["Jahr", "Datum", "Betrag"]
+DATEN_KOPF_V1 = ["Jahr", "Startdatum", "Datum", "Betrag"]
 
 
 def importieren(pfad: Path) -> Daten:
@@ -59,17 +60,12 @@ def _als_datum(wert) -> date | None:
 
 
 def _alte_excel(wb, blaetter: list[str]) -> Daten:
+    """Blätter '98' … '25': Spalte C Datum, Spalte D Betrag ab Zeile 5 (das Startdatum wird nicht mehr gebraucht)."""
     saisons = {}
     for name in blaetter:
         jahr = 1900 + int(name) if int(name) >= 90 else 2000 + int(name)
-        zeilen = list(wb[name].iter_rows(min_row=5, max_col=4, values_only=True))
-        if not zeilen:
-            continue
-        start = _als_datum(zeilen[0][2])
-        if start is None:
-            continue
         eintraege = {}
-        for z in zeilen:
+        for z in wb[name].iter_rows(min_row=5, max_col=4, values_only=True):
             tag = _als_datum(z[2])
             try:
                 betrag = betrag_normalisieren(z[3])
@@ -78,27 +74,29 @@ def _alte_excel(wb, blaetter: list[str]) -> Daten:
             if tag and betrag is not None:
                 eintraege[tag] = betrag
         if eintraege:
-            saisons[jahr] = Saison(jahr, start, eintraege)
+            saisons[jahr] = Saison(jahr, eintraege)
     return Daten(saisons)
 
 
 def _eigenes_excel(ws) -> Daten:
     zeilen = ws.iter_rows(values_only=True)
-    kopf = [str(x).strip() if x is not None else "" for x in next(zeilen, [])][:4]
-    if kopf != DATEN_KOPF:
-        raise ValueError("Das Blatt 'Daten' hat nicht die erwarteten Spalten Jahr, Startdatum, Datum, Betrag.")
+    kopf = [str(x).strip() if x is not None else "" for x in next(zeilen, [])]
+    if kopf[:3] == DATEN_KOPF:
+        spalten = (0, 1, 2)
+    elif kopf[:4] == DATEN_KOPF_V1:
+        spalten = (0, 2, 3)  # früheres Format mit Startdatum
+    else:
+        raise ValueError("Das Blatt 'Daten' hat nicht die erwarteten Spalten Jahr, Datum, Betrag.")
+    sj, sd, sb = spalten
     saisons: dict[int, Saison] = {}
     for nr, z in enumerate(zeilen, start=2):
-        if not z or all(v is None for v in z[:4]):
+        if not z or all(v is None for v in z[: sb + 1]):
             continue
         try:
-            jahr = int(z[0])
-            start = _als_datum(z[1])
-            if start is None:
-                raise ValueError("Startdatum fehlt")
-            s = saisons.setdefault(jahr, Saison(jahr, start, {}))
-            tag = _als_datum(z[2])
-            betrag = betrag_normalisieren(z[3])
+            jahr = int(z[sj])
+            s = saisons.setdefault(jahr, Saison(jahr, {}))
+            tag = _als_datum(z[sd])
+            betrag = betrag_normalisieren(z[sb])
             if tag and betrag is not None:
                 s.eintraege[tag] = betrag
         except (TypeError, ValueError) as e:
@@ -121,32 +119,29 @@ def excel_exportieren(pfad: Path, d: Daten) -> None:
     ws.append(DATEN_KOPF)
     for jahr, s in sorted(d.saisons.items()):
         if not s.eintraege:
-            ws.append([jahr, s.start, None, None])  # leere Saison erhalten
+            ws.append([jahr, None, None])  # leere Saison erhalten
         for tag in sorted(s.eintraege):
-            ws.append([jahr, s.start, tag, s.eintraege[tag]])
+            ws.append([jahr, tag, s.eintraege[tag]])
     for zelle in ws[1]:
         zelle.font = fett
     for zeile in ws.iter_rows(min_row=2):
-        zeile[1].number_format = zeile[2].number_format = "DD.MM.YYYY"
-        zeile[3].number_format = "#,##0.00"
-    for i, breite in enumerate([8, 13, 13, 11], start=1):
+        zeile[1].number_format = "DD.MM.YYYY"
+        zeile[2].number_format = "#,##0.00"
+    for i, breite in enumerate([8, 13, 11], start=1):
         ws.column_dimensions[get_column_letter(i)].width = breite
     ws.freeze_panes = "A2"
 
     ue = wb.create_sheet("Übersicht")
-    wochen = max((anzahl_wochen(s) for s in d.saisons.values()), default=16)
-    ue.append(["Jahr", "Start"] + [f"Wo {i}" for i in range(1, wochen + 1)] + ["Min", "Max", "Mittel", "Tage", "Total"])
+    totale = {jahr: wochentotale(s) for jahr, s in d.saisons.items()}
+    alle_kw = [w for t in totale.values() for w in t]
+    kws = list(range(min(alle_kw), max(alle_kw) + 1)) if alle_kw else []
+    ue.append(["Jahr"] + [f"KW {w}" for w in kws] + ["Min", "Max", "Mittel", "Tage", "Total"])
     for jahr, s in sorted(d.saisons.items()):
-        w = wochentotale(s)
-        w += [None] * (wochen - len(w))
         st = statistik(s)
-        ue.append([jahr, s.start] + [x or None for x in w] + [st["min"], st["max"], st["mittel"], st["tage"], st["total"]])
+        ue.append([jahr] + [totale[jahr].get(w) for w in kws] + [st["min"], st["max"], st["mittel"], st["tage"], st["total"]])
     for zelle in ue[1]:
         zelle.font = fett
-    for zeile in ue.iter_rows(min_row=2):
-        zeile[1].number_format = "DD.MM.YYYY"
-    ue.column_dimensions["B"].width = 12
-    ue.freeze_panes = "C2"
+    ue.freeze_panes = "B2"
 
     pfad.parent.mkdir(parents=True, exist_ok=True)
     wb.save(pfad)

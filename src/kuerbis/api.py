@@ -14,12 +14,12 @@ from .model import (
     Daten,
     Saison,
     betrag_normalisieren,
-    kumuliert_pro_tag,
+    min_max_jahre,
+    naechster_tag,
     statistik,
     tageszeilen,
-    vorgeschlagener_start,
+    vergleichsreihe,
     wochentotale,
-    anzahl_wochen,
 )
 
 
@@ -29,6 +29,10 @@ DATEIFILTER = {
     "json": ("JSON Datei (*.json)",),
     "import": ("Kürbisverkauf Daten (*.json;*.xlsx)", "Excel Datei (*.xlsx)", "JSON Datei (*.json)", "Alle Dateien (*.*)"),
 }
+
+
+ANZAHL_JAHRE_STANDARD = 5
+MAX_JAHRE = 10  # Linien im Vergleich (Farben nach Alter, siehe app.js)
 
 
 def _fehler_als_antwort(methode):
@@ -43,9 +47,10 @@ def _fehler_als_antwort(methode):
 
 
 class Api:
-    def __init__(self, datenpfad: Path, einstellungen_basis: Path | None = None):
+    def __init__(self, datenpfad: Path, einstellungen_basis: Path | None = None, heute: date | None = None):
         # Unterstrich-Attribute werden von pywebview nicht an JavaScript weitergegeben.
         self._basis = einstellungen_basis
+        self._heute = heute  # nur für Tests; sonst das echte Datum
         self._import: Daten | None = None
         self._fenster = None
         self._oeffnen(Path(datenpfad))
@@ -84,10 +89,9 @@ class Api:
     def _saison_antwort(self, s: Saison) -> dict:
         return {
             "jahr": s.jahr,
-            "start": s.start.isoformat(),
             "zeilen": tageszeilen(s),
             "statistik": statistik(s),
-            "wochentotale": wochentotale(s),
+            "naechster_tag": naechster_tag(s).isoformat(),
         }
 
     # ---- Abfragen ----
@@ -102,23 +106,64 @@ class Api:
     def saison(self, jahr) -> dict:
         return self._saison_antwort(self._saison(jahr))
 
-    def vorschlag_start(self, jahr) -> dict:
-        return {"start": vorgeschlagener_start(int(jahr)).isoformat()}
+    def _aktuelles_jahr(self) -> int:
+        return (self._heute or date.today()).year
+
+    def _ausgenommen(self) -> list[int]:
+        werte = settings.einstellung_lesen("bereich_ausgenommen", [], self._basis)
+        return sorted(int(j) for j in werte) if isinstance(werte, list) else []
+
+    def _bereich(self) -> dict:
+        return min_max_jahre(self._daten, self._aktuelles_jahr(), self._ausgenommen())
 
     def vergleich(self) -> dict:
+        """Pro Jahr das laufende Total; erster_tag = Position auf der gemeinsamen Achse (KW + Wochentag).
+
+        bereich = MIN-/MAX-Jahr der abgeschlossenen Jahre (ohne ausgenommene) für die Fläche im Diagramm.
+        """
+        aktuell = self._aktuelles_jahr()
+        anzahl = settings.einstellung_lesen("vergleich_jahre", ANZAHL_JAHRE_STANDARD, self._basis)
         return {
             "jahre": [
-                {"jahr": j, "start": s.start.isoformat(), "kumuliert": kumuliert_pro_tag(s), "total": statistik(s)["total"]}
+                {"jahr": j, **vergleichsreihe(s), "total": statistik(s)["total"]}
                 for j, s in sorted(self._daten.saisons.items())
-            ]
+            ],
+            "aktuelles_jahr": aktuell,
+            "bereich": self._bereich(),
+            "anzahl_jahre": anzahl if isinstance(anzahl, int) and 1 <= anzahl <= MAX_JAHRE else ANZAHL_JAHRE_STANDARD,
+            "ausgenommen": self._ausgenommen(),
+            "abgeschlossen": [
+                {"jahr": j, "total": statistik(s)["total"]}
+                for j, s in sorted(self._daten.saisons.items(), reverse=True)
+                if j < aktuell and s.eintraege
+            ],
         }
+
+    @_fehler_als_antwort
+    def vergleich_einstellen(self, anzahl_jahre, ausgenommen) -> dict:
+        anzahl = int(anzahl_jahre)
+        if not 1 <= anzahl <= MAX_JAHRE:
+            raise ValueError(f"Die Anzahl Jahre muss zwischen 1 und {MAX_JAHRE} liegen.")
+        settings.einstellung_setzen("vergleich_jahre", anzahl, self._basis)
+        settings.einstellung_setzen("bereich_ausgenommen", sorted(int(j) for j in ausgenommen or []), self._basis)
+        return self.vergleich()
 
     def uebersicht(self) -> dict:
         saisons = sorted(self._daten.saisons.items(), reverse=True)
+        totale = {j: wochentotale(s) for j, s in saisons}
+        alle_kw = [w for t in totale.values() for w in t]
+        kws = list(range(min(alle_kw), max(alle_kw) + 1)) if alle_kw else []
         return {
-            "max_wochen": max((anzahl_wochen(s) for _, s in saisons), default=16),
+            "kws": kws,
+            "bereich": self._bereich(),
             "zeilen": [
-                {"jahr": j, "start": s.start.isoformat(), "wochen": wochentotale(s), "statistik": statistik(s)}
+                {
+                    "jahr": j,
+                    "erster_tag": min(s.eintraege).isoformat() if s.eintraege else None,
+                    "letzter_tag": max(s.eintraege).isoformat() if s.eintraege else None,
+                    "wochen": [totale[j].get(w) for w in kws],
+                    "statistik": statistik(s),
+                }
                 for j, s in saisons
             ],
         }
@@ -126,25 +171,16 @@ class Api:
     # ---- Änderungen ----
 
     @_fehler_als_antwort
-    def neue_saison(self, jahr, start_iso) -> dict:
+    def neue_saison(self, jahr) -> dict:
         self._pruefe_schreibbar()
         jahr = int(jahr)
+        if not 1990 <= jahr <= 2100:
+            raise ValueError(f"Ungültiges Jahr: {jahr}")
         if jahr in self._daten.saisons:
             raise ValueError(f"Die Saison {jahr} gibt es schon.")
-        self._daten.saisons[jahr] = Saison(jahr, date.fromisoformat(start_iso), {})
+        self._daten.saisons[jahr] = Saison(jahr, {})
         self._speichern()
         return self._saison_antwort(self._daten.saisons[jahr])
-
-    @_fehler_als_antwort
-    def start_aendern(self, jahr, start_iso) -> dict:
-        self._pruefe_schreibbar()
-        s = self._saison(jahr)
-        neu = date.fromisoformat(start_iso)
-        if s.eintraege and min(s.eintraege) < neu:
-            raise ValueError("Es gibt Einträge vor diesem Startdatum.")
-        s.start = neu
-        self._speichern()
-        return self._saison_antwort(s)
 
     @_fehler_als_antwort
     def saison_loeschen(self, jahr) -> dict:
@@ -158,7 +194,12 @@ class Api:
     def betrag_setzen(self, jahr, datum_iso, wert) -> dict:
         self._pruefe_schreibbar()
         s = self._saison(jahr)
-        tag = date.fromisoformat(datum_iso)
+        try:
+            tag = date.fromisoformat(datum_iso)
+        except (TypeError, ValueError):
+            raise ValueError("Bitte ein gültiges Datum wählen.") from None
+        if tag.year != s.jahr:
+            raise ValueError(f"Das Datum muss im Jahr {s.jahr} liegen.")
         betrag = betrag_normalisieren(wert)
         if betrag is None:
             s.eintraege.pop(tag, None)

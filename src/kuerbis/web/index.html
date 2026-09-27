@@ -43,8 +43,7 @@
         <label>Saison
           <select id="jahr-wahl"></select>
         </label>
-        <span id="start-anzeige" class="gedaempft"></span>
-        <button id="btn-start-aendern" class="knopf klein">Startdatum ändern</button>
+        <span id="bereich-anzeige" class="gedaempft"></span>
         <span class="luecke"></span>
         <button id="btn-neue-saison" class="knopf primaer">Neue Saison</button>
       </div>
@@ -58,9 +57,18 @@
         <div class="tabelle-rahmen">
           <table class="tage">
             <thead>
-              <tr><th>Wo</th><th>Tag</th><th>Datum</th><th class="zahl">Betrag</th><th class="zahl">Total</th><th class="zahl">Wochentotal</th></tr>
+              <tr><th>KW</th><th>Tag</th><th>Datum</th><th class="zahl">Betrag</th><th class="zahl">Total</th><th class="zahl" title="Wochentotal">Woche</th></tr>
             </thead>
             <tbody id="tage-body"></tbody>
+            <tfoot>
+              <tr class="neu-zeile">
+                <td class="wo">Neu</td>
+                <td id="neu-wochentag"></td>
+                <td><input id="neu-datum" type="date" aria-label="Datum für neuen Tag"></td>
+                <td class="zahl"><input id="neu-betrag" inputmode="decimal" autocomplete="off" placeholder="Betrag" title="Betrag eingeben und Enter drücken" aria-label="Betrag für neuen Tag"></td>
+                <td colspan="2" class="gedaempft neu-hilfe">↵ hinzufügen</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
         <div class="seite">
@@ -80,12 +88,18 @@
     <!-- Vergleich -->
     <section id="ansicht-vergleich" class="ansicht" hidden>
       <div class="werkzeug">
-        <span class="gedaempft">Jahre (max. 8):</span>
+        <label>Letzte <select id="anzahl-jahre" aria-label="Anzahl Jahre"></select> Jahre</label>
+        <span class="luecke"></span>
+        <span id="bereich-info" class="bereich-info"></span>
+        <button id="btn-bereich" class="knopf klein">MIN/MAX-Jahre…</button>
+      </div>
+      <div class="werkzeug">
+        <span class="gedaempft">Jahre (max. 10):</span>
         <div id="jahr-chips" class="chips"></div>
       </div>
       <div class="karte">
         <h3>Laufendes Total über die Saison</h3>
-        <p class="unterzeile">Tag 1 = Startdatum der jeweiligen Saison</p>
+        <p class="unterzeile">Nach Kalenderwoche und Wochentag ausgerichtet – gleiche Wochentage liegen übereinander</p>
         <div class="diagramm gross"><canvas id="chart-vergleich"></canvas></div>
         <div id="legende-vergleich" class="legende"></div>
       </div>
@@ -118,7 +132,7 @@
     <form method="dialog">
       <h2 id="dlg-saison-titel">Neue Saison</h2>
       <label>Jahr <input id="dlg-jahr" type="number" min="1990" max="2100" required></label>
-      <label>Startdatum <input id="dlg-start" type="date" required></label>
+      <p class="gedaempft">Die Tage erfassen Sie danach einfach in der Zeile „Neuer Tag“.</p>
       <p id="dlg-saison-fehler" class="fehler"></p>
       <div class="knoepfe">
         <button value="abbrechen" class="knopf" formnovalidate>Abbrechen</button>
@@ -165,6 +179,23 @@
       </div>
       <div class="knoepfe">
         <button value="zu" class="knopf">Schliessen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Dialog: Jahre für MIN/MAX-Bereich -->
+  <dialog id="dlg-bereich">
+    <form method="dialog">
+      <h2>Jahre für den MIN/MAX-Bereich</h2>
+      <p class="gedaempft">Die Fläche im Vergleich reicht vom Jahr mit dem tiefsten bis zum Jahr mit dem höchsten
+        Jahrestotal. Berücksichtigt werden abgeschlossene Jahre; nehmen Sie untypische Jahre hier aus.</p>
+      <div class="knoepfe links">
+        <button type="button" class="knopf klein" id="bereich-alle">Alle</button>
+      </div>
+      <div class="tabelle-rahmen bereich-liste"><table><tbody id="bereich-body"></tbody></table></div>
+      <div class="knoepfe">
+        <button value="abbrechen" class="knopf">Abbrechen</button>
+        <button value="ok" class="knopf primaer">Übernehmen</button>
       </div>
     </form>
   </dialog>

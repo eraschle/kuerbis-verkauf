@@ -16,8 +16,7 @@ const heuteIso = () => {
 };
 
 // Kategorische Palette (validiert, feste Reihenfolge; siehe dataviz-Referenz)
-const PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
-const MAX_VERGLEICH = PALETTE.length;
+const LINIENFARBE = "#2a78d6";
 const TAGESFARBE = "#eb6834";
 const TINTE_2 = "#52514e";
 const GEDAEMPFT = "#898781";
@@ -59,7 +58,24 @@ function frage(text, knoepfe) {
   }
   dlg.returnValue = "";
   dlg.showModal();
-  return new Promise((ok) => dlg.addEventListener("close", () => ok(dlg.returnValue), { once: true }));
+  return dialogAntwort(dlg);
+}
+
+// Liefert den Wert des geklickten Knopfs ("ok", "abbrechen", …) bzw. "abbrechen" bei Escape.
+// Bewusst über submit statt close: close wird bei verdecktem Fenster verzögert ausgelöst.
+function dialogAntwort(dlg) {
+  return new Promise((ok) => {
+    const form = dlg.querySelector("form");
+    const fertig = (wert) => {
+      form.removeEventListener("submit", beiSubmit);
+      dlg.removeEventListener("cancel", beiAbbruch);
+      ok(wert);
+    };
+    const beiSubmit = (e) => fertig(e.submitter ? e.submitter.value : "");
+    const beiAbbruch = () => fertig("abbrechen");
+    form.addEventListener("submit", beiSubmit);
+    dlg.addEventListener("cancel", beiAbbruch);
+  });
 }
 
 // ---------- Zustand ----------
@@ -69,8 +85,8 @@ const zustand = {
   jahr: null,
   saison: null,
   ansicht: "erfassung",
-  vergleichSlots: new Map(), // Jahr -> Palettenplatz (bleibt beim An-/Abwählen anderer Jahre stabil)
-  vergleichInit: false,
+  vergleich: null, // letzte Antwort von api.vergleich()
+  vergleichAuswahl: null, // Set der gezeigten Jahre; null = Standard (letzte N Jahre)
 };
 const charts = {};
 
@@ -96,8 +112,11 @@ async function statusLaden(bevorzugtesJahr) {
   let jahr = bevorzugtesJahr ?? zustand.jahr;
   if (!zustand.jahre.includes(jahr)) jahr = zustand.jahre[0] ?? null;
   zustand.jahr = jahr;
-  zustand.vergleichInit = false;
-  for (const j of [...zustand.vergleichSlots.keys()]) if (!zustand.jahre.includes(j)) zustand.vergleichSlots.delete(j);
+  if (zustand.vergleichAuswahl) {
+    for (const j of [...zustand.vergleichAuswahl]) if (!zustand.jahre.includes(j)) zustand.vergleichAuswahl.delete(j);
+    // Leere Auswahl (z. B. vor dem ersten Import) wieder auf den Standard setzen
+    if (zustand.vergleichAuswahl.size === 0) zustand.vergleichAuswahl = null;
+  }
   await ansichtZeigen(zustand.ansicht);
 }
 
@@ -131,30 +150,38 @@ async function erfassungZeigen() {
   const leer = zustand.jahr === null;
   $("#leer-hinweis").hidden = !leer;
   $("#erfassung-inhalt").hidden = leer;
-  $("#btn-start-aendern").hidden = leer;
   $("#jahr-wahl").parentElement.hidden = leer;
-  $("#start-anzeige").textContent = "";
+  $("#bereich-anzeige").textContent = "";
   if (leer) return;
   $("#jahr-wahl").value = zustand.jahr;
   zustand.saison = await rufe("saison", zustand.jahr);
   tabelleAufbauen();
+  neueZeileVorbereiten();
   saisonAktualisieren();
   zurRelevantenZeile();
 }
+
+// Kennung der Tabellenform: ändert sie sich, wird die Tabelle neu aufgebaut
+const tabellenForm = (s) => (s.zeilen.length ? `${s.zeilen[0].datum}/${s.zeilen.length}` : "leer");
 
 function tabelleAufbauen() {
   const s = zustand.saison;
   const heute = heuteIso();
   const body = $("#tage-body");
   body.innerHTML = "";
+  zustand.form = tabellenForm(s);
+  if (!s.zeilen.length) {
+    body.innerHTML = `<tr><td colspan="6" class="leer-hinweis">Noch keine Tage erfasst – unten in der Zeile „Neu“ beginnen.</td></tr>`;
+    return;
+  }
   s.zeilen.forEach((z, i) => {
     const tr = document.createElement("tr");
     tr.dataset.index = i;
-    if (i % 7 === 0) tr.classList.add("wochenstart");
+    if (z.wochenstart) tr.classList.add("wochenstart");
     if (z.wochentag === "Samstag" || z.wochentag === "Sonntag") tr.classList.add("wochenende");
     if (z.datum === heute) tr.classList.add("heute");
     tr.innerHTML = `
-      <td class="wo">${i % 7 === 0 ? z.woche : ""}</td>
+      <td class="wo">${z.wochenstart ? z.kw : ""}</td>
       <td>${z.wochentag}</td>
       <td>${datumCH(z.datum)}</td>
       <td class="zahl"><input inputmode="decimal" autocomplete="off" aria-label="Betrag ${datumCH(z.datum)}"></td>
@@ -171,13 +198,71 @@ function tabelleAufbauen() {
   });
 }
 
+const WOCHENTAGE_JS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+
+function neueZeileVorbereiten() {
+  const d = $("#neu-datum");
+  d.min = `${zustand.jahr}-01-01`;
+  d.max = `${zustand.jahr}-12-31`;
+  d.value = zustand.saison.naechster_tag;
+  $("#neu-betrag").value = "";
+  $("#neu-betrag").classList.remove("ungueltig");
+  neuWochentagZeigen();
+}
+
+function neuWochentagZeigen() {
+  const v = $("#neu-datum").value;
+  $("#neu-wochentag").textContent = v ? WOCHENTAGE_JS[new Date(v + "T00:00:00").getDay()] : "";
+}
+$("#neu-datum").addEventListener("change", neuWochentagZeigen);
+
+$("#neu-betrag").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    neuenTagSpeichern();
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    const alle = document.querySelectorAll("#tage-body input");
+    if (alle.length) alle[alle.length - 1].focus();
+  }
+});
+$("#neu-datum").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    $("#neu-betrag").focus();
+  }
+});
+
+async function neuenTagSpeichern() {
+  const betrag = $("#neu-betrag");
+  const datum = $("#neu-datum").value;
+  if (!betrag.value.trim()) return;
+  try {
+    zustand.saison = await rufe("betrag_setzen", zustand.jahr, datum, betrag.value);
+    $("#hinweis").hidden = true;
+    tabelleAufbauen();
+    neueZeileVorbereiten();
+    saisonAktualisieren();
+    gespeichert();
+    const zeile = document.querySelector(`#tage-body input[data-datum="${datum}"]`);
+    if (zeile) zeile.classList.add("gespeichert");
+    $(".tabelle-rahmen").scrollTop = $(".tabelle-rahmen").scrollHeight;
+    betrag.focus();
+  } catch (e) {
+    betrag.classList.add("ungueltig");
+    hinweis(`${datumCH(datum)}: ${e.message}`, true);
+  }
+}
+
 function saisonAktualisieren() {
   const s = zustand.saison;
-  $("#start-anzeige").textContent = `Start: ${datumCH(s.start)}`;
+  $("#bereich-anzeige").textContent = s.zeilen.length
+    ? `${datumCH(s.zeilen[0].datum)} – ${datumCH(s.zeilen[s.zeilen.length - 1].datum)}`
+    : "";
   const zeilen = $("#tage-body").children;
   s.zeilen.forEach((z, i) => {
     const tr = zeilen[i];
-    if (!tr) return;
+    if (!tr || !tr.querySelector(".laufend")) return;
     tr.querySelector(".laufend").textContent = chf(z.laufend);
     tr.querySelector(".wochentotal").textContent = chf(z.wochentotal);
   });
@@ -196,21 +281,32 @@ function kachelnZeigen(st) {
 }
 
 async function betragSpeichern(input) {
+  const datum = input.dataset.datum;
   try {
-    zustand.saison = await rufe("betrag_setzen", zustand.jahr, input.dataset.datum, input.value);
-    const z = zustand.saison.zeilen.find((r) => r.datum === input.dataset.datum);
+    zustand.saison = await rufe("betrag_setzen", zustand.jahr, datum, input.value);
+    $("#hinweis").hidden = true;
+    gespeichert();
+    if (tabellenForm(zustand.saison) !== zustand.form) {
+      // Erster oder letzter Tag entfernt: Tabelle neu aufbauen
+      const fokus = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.datum : null;
+      tabelleAufbauen();
+      neueZeileVorbereiten();
+      saisonAktualisieren();
+      const ziel = fokus && document.querySelector(`#tage-body input[data-datum="${fokus}"]`);
+      if (ziel) ziel.focus();
+      return;
+    }
+    const z = zustand.saison.zeilen.find((r) => r.datum === datum);
     input.value = eingabeText(z ? z.betrag : null);
     input.dataset.alt = input.value;
     input.classList.remove("ungueltig");
     input.classList.remove("gespeichert");
     void input.offsetWidth; // Animation neu starten
     input.classList.add("gespeichert");
-    $("#hinweis").hidden = true;
     saisonAktualisieren();
-    gespeichert();
   } catch (e) {
     input.classList.add("ungueltig");
-    hinweis(`${datumCH(input.dataset.datum)}: ${e.message}`, true);
+    hinweis(`${datumCH(datum)}: ${e.message}`, true);
   }
 }
 
@@ -224,24 +320,25 @@ function tastenNavigation(e) {
   if (!richtung) return;
   e.preventDefault();
   const alle = [...document.querySelectorAll("#tage-body input")];
-  const ziel = alle[alle.indexOf(e.target) + richtung];
+  const ziel = alle[alle.indexOf(e.target) + richtung] || (richtung > 0 ? $("#neu-betrag") : null);
   if (ziel) {
     ziel.focus();
     ziel.closest("tr").scrollIntoView({ block: "nearest" });
-  } else {
-    e.target.blur();
   }
 }
 
 function zurRelevantenZeile() {
   const zeilen = zustand.saison.zeilen;
-  let index = zeilen.findIndex((z) => z.datum === heuteIso());
-  if (index < 0) {
-    for (let i = zeilen.length - 1; i >= 0; i--) if (zeilen[i].betrag !== null) { index = i; break; }
+  const index = zeilen.findIndex((z) => z.datum === heuteIso());
+  if (index >= 0) {
+    const tr = $("#tage-body").children[index];
+    tr.scrollIntoView({ block: "center" });
+    tr.querySelector("input").focus({ preventScroll: true });
+    return;
   }
-  const tr = $("#tage-body").children[Math.max(index, 0)];
-  if (tr) tr.scrollIntoView({ block: "center" });
-  if (index >= 0 && zeilen[index].datum === heuteIso()) tr.querySelector("input").focus({ preventScroll: true });
+  // Sonst ans Ende (dort wird weitergeschrieben)
+  $(".tabelle-rahmen").scrollTop = $(".tabelle-rahmen").scrollHeight;
+  if (zustand.jahr === new Date().getFullYear()) $("#neu-betrag").focus({ preventScroll: true });
 }
 
 function achsen(yTitel) {
@@ -275,12 +372,7 @@ function diagrammSetzen(name, canvas, konfig) {
 }
 
 function jahresDiagramme() {
-  const s = zustand.saison;
-  // Nur bis zum letzten Tag mit Eintrag (mind. 16 Wochen Rahmen wäre leer)
-  let ende = s.zeilen.length;
-  const letzter = s.zeilen.map((z) => z.betrag !== null).lastIndexOf(true);
-  if (letzter >= 0) ende = Math.min(s.zeilen.length, Math.max(letzter + 8, 28));
-  const zeilen = s.zeilen.slice(0, ende);
+  const zeilen = zustand.saison.zeilen; // bereits vom ersten bis zum letzten Tag
   const labels = zeilen.map((z) => kurzDatum(z.datum));
 
   diagrammSetzen("tage", $("#chart-tage"), {
@@ -322,10 +414,10 @@ function jahresDiagramme() {
       datasets: [{
         label: "Laufendes Total",
         data: zeilen.map((z) => z.laufend),
-        borderColor: PALETTE[0],
-        backgroundColor: PALETTE[0],
+        borderColor: LINIENFARBE,
+        backgroundColor: LINIENFARBE,
         borderWidth: 2,
-        pointRadius: 0,
+        pointRadius: zeilen.length === 1 ? 4 : 0, // ein einzelner Tag ergibt sonst keine sichtbare Linie
         pointHoverRadius: 5,
         pointHoverBorderColor: "#fcfcfb",
         pointHoverBorderWidth: 2,
@@ -353,162 +445,260 @@ function jahresDiagramme() {
   });
 }
 
-// ---------- Saison anlegen / ändern ----------
+// ---------- Saison anlegen ----------
 
-$("#btn-neue-saison").addEventListener("click", async () => {
+$("#btn-neue-saison").addEventListener("click", () => {
   const jetzt = new Date().getFullYear();
   const jahr = zustand.jahre.includes(jetzt) ? Math.max(...zustand.jahre) + 1 : jetzt;
-  const { start } = await window.pywebview.api.vorschlag_start(jahr);
-  saisonDialog({ titel: "Neue Saison", jahr, start, neu: true });
-});
-
-$("#btn-start-aendern").addEventListener("click", () => {
-  saisonDialog({ titel: `Startdatum ${zustand.jahr} ändern`, jahr: zustand.jahr, start: zustand.saison.start, neu: false });
-});
-
-$("#dlg-jahr").addEventListener("change", async (e) => {
-  const jahr = Number(e.target.value);
-  if (jahr > 1990 && jahr < 2100) $("#dlg-start").value = (await window.pywebview.api.vorschlag_start(jahr)).start;
-});
-
-function saisonDialog({ titel, jahr, start, neu }) {
   const dlg = $("#dlg-saison");
-  $("#dlg-saison-titel").textContent = titel;
   $("#dlg-jahr").value = jahr;
-  $("#dlg-jahr").disabled = !neu;
-  $("#dlg-start").value = start;
   $("#dlg-saison-fehler").textContent = "";
   dlg.returnValue = "";
   dlg.showModal();
-  dlg.onclose = null;
-  const form = dlg.querySelector("form");
-  form.onsubmit = async (e) => {
+  dlg.querySelector("form").onsubmit = async (e) => {
     if (e.submitter && e.submitter.value !== "ok") return;
     e.preventDefault();
     const j = Number($("#dlg-jahr").value);
-    const s = $("#dlg-start").value;
-    if (!s) return ($("#dlg-saison-fehler").textContent = "Bitte ein Startdatum wählen.");
-    if (Number(s.slice(0, 4)) !== j) return ($("#dlg-saison-fehler").textContent = `Das Startdatum muss im Jahr ${j} liegen.`);
     try {
-      if (neu) await rufe("neue_saison", j, s);
-      else await rufe("start_aendern", j, s);
+      await rufe("neue_saison", j);
       dlg.close("ok");
       gespeichert();
       await statusLaden(j);
-      if (zustand.ansicht !== "erfassung") ansichtZeigen("erfassung");
+      if (zustand.ansicht !== "erfassung") await ansichtZeigen("erfassung");
+      $("#neu-betrag").focus();
     } catch (err) {
       $("#dlg-saison-fehler").textContent = err.message;
     }
   };
-}
+});
 
 // ---------- Vergleich ----------
 
-function freierSlot() {
-  const belegt = new Set(zustand.vergleichSlots.values());
-  for (let i = 0; i < MAX_VERGLEICH; i++) if (!belegt.has(i)) return i;
-  return -1;
+// Farben nach Alter: laufendes Jahr kräftig orange, frühere Jahre ein Blau-Verlauf von dunkel (letztes Jahr)
+// nach hell (ältere). Die Farbe hängt am Jahr selbst, nicht an der Auswahl – sie bleibt beim Umschalten stabil.
+const AKTUELL_FARBE = "#eb6834";
+const ALTERS_RAMPE = ["#0d366b", "#104281", "#184f95", "#1c5cab", "#256abf", "#2a78d6", "#3987e5", "#5598e7", "#6da7ec", "#86b6ef"];
+const BEREICH_RAND = "#898781";
+const BEREICH_FLAECHE = "rgba(137, 135, 129, 0.16)";
+const MAX_VERGLEICH = 10;
+
+function jahresFarbe(jahr, aktuell) {
+  if (jahr >= aktuell) return AKTUELL_FARBE;
+  return ALTERS_RAMPE[Math.min(aktuell - jahr - 1, ALTERS_RAMPE.length - 1)];
+}
+
+function markeMinMax(jahr, bereich) {
+  if (jahr === bereich.max) return ` <span class="marke-mm max">▲ Max</span>`;
+  if (jahr === bereich.min) return ` <span class="marke-mm min">▼ Min</span>`;
+  return "";
 }
 
 async function vergleichZeigen() {
-  if (!zustand.vergleichInit) {
-    if (zustand.vergleichSlots.size === 0) {
-      // Standard: neuestes Jahr + die 4 davor (neuestes bekommt Farbe 1)
-      zustand.jahre.slice(0, 5).forEach((j) => zustand.vergleichSlots.set(j, freierSlot()));
-    }
-    zustand.vergleichInit = true;
-  }
   const daten = await rufe("vergleich");
-  chipsZeigen();
+  zustand.vergleich = daten;
+  if (zustand.vergleichAuswahl === null) {
+    // Standard: die letzten N Jahre (MIN/MAX sind als Fläche immer sichtbar)
+    zustand.vergleichAuswahl = new Set(zustand.jahre.slice(0, daten.anzahl_jahre));
+  }
+  const wahl = $("#anzahl-jahre");
+  wahl.innerHTML = Array.from({ length: MAX_VERGLEICH }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join("");
+  wahl.value = daten.anzahl_jahre;
+  bereichInfoZeigen(daten);
+  chipsZeigen(daten);
   vergleichsDiagramm(daten);
   jahresTotalDiagramm(daten);
 }
 
-function chipsZeigen() {
+function bereichInfoZeigen(daten) {
+  const b = daten.bereich;
+  $("#bereich-info").innerHTML =
+    b.max === null
+      ? `<span class="gedaempft">Noch keine abgeschlossenen Jahre für den MIN/MAX-Bereich</span>`
+      : `<span class="flaeche"></span> Bereich: <span class="marke-mm min">▼ Min ${b.min}</span> – <span class="marke-mm max">▲ Max ${b.max}</span>` +
+        (daten.ausgenommen.length ? ` <span class="gedaempft">(ohne ${daten.ausgenommen.join(", ")})</span>` : "");
+}
+
+$("#anzahl-jahre").addEventListener("change", async (e) => {
+  try {
+    await rufe("vergleich_einstellen", Number(e.target.value), zustand.vergleich.ausgenommen);
+    zustand.vergleichAuswahl = null; // Auswahl auf den neuen Standard zurücksetzen
+    await vergleichZeigen();
+  } catch (err) {
+    hinweis(err.message, true);
+  }
+});
+
+function chipsZeigen(daten) {
   const box = $("#jahr-chips");
-  const voll = zustand.vergleichSlots.size >= MAX_VERGLEICH;
+  const auswahl = zustand.vergleichAuswahl;
+  const voll = auswahl.size >= MAX_VERGLEICH;
   box.innerHTML = "";
   for (const j of zustand.jahre) {
-    const aktiv = zustand.vergleichSlots.has(j);
+    const aktiv = auswahl.has(j);
     const b = document.createElement("button");
     b.className = "chip";
     b.setAttribute("aria-pressed", aktiv);
     b.disabled = !aktiv && voll;
-    b.innerHTML = `<span class="punkt"></span>${j}`;
-    if (aktiv) b.querySelector(".punkt").style.background = PALETTE[zustand.vergleichSlots.get(j)];
+    b.innerHTML = `<span class="punkt"></span>${j}${markeMinMax(j, daten.bereich)}`;
+    if (aktiv) b.querySelector(".punkt").style.background = jahresFarbe(j, daten.aktuelles_jahr);
     b.addEventListener("click", () => {
-      if (aktiv) zustand.vergleichSlots.delete(j);
-      else zustand.vergleichSlots.set(j, freierSlot());
+      if (aktiv) auswahl.delete(j);
+      else auswahl.add(j);
       vergleichZeigen();
     });
     box.appendChild(b);
   }
 }
 
+// Achsenposition (Tage seit Montag der KW 1) -> Kalenderwoche / Wochentag
+const achseKw = (a) => Math.floor(a / 7) + 1;
+const ACHSE_TAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+
+function datumPlus(iso, tage) {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + tage);
+  return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.`;
+}
+
 function vergleichsDiagramm(daten) {
-  const gewaehlt = daten.jahre.filter((j) => zustand.vergleichSlots.has(j.jahr)).sort((a, b) => b.jahr - a.jahr);
-  const laenge = Math.max(0, ...gewaehlt.map((j) => j.kumuliert.length));
-  const labels = Array.from({ length: laenge }, (_, i) => i + 1);
+  const nachJahr = new Map(daten.jahre.map((j) => [j.jahr, j]));
+  const gewaehlt = daten.jahre
+    .filter((j) => zustand.vergleichAuswahl.has(j.jahr) && j.erster_tag !== null)
+    .sort((a, b) => b.jahr - a.jahr);
+  const bandJahre = [daten.bereich.min, daten.bereich.max].map((j) => nachJahr.get(j)).filter((j) => j && j.erster_tag !== null);
+  const alle = [...gewaehlt, ...bandJahre];
+
+  // Achse: vom Montag der frühesten KW bis zum spätesten letzten Verkaufstag
+  const von = alle.length ? Math.min(...alle.map((j) => j.erster_tag)) : 0;
+  const achseStart = von - (((von % 7) + 7) % 7);
+  const achseEnde = alle.length ? Math.max(...alle.map((j) => j.erster_tag + j.kumuliert.length - 1)) : -1;
+  const positionen = Array.from({ length: Math.max(0, achseEnde - achseStart + 1) }, (_, i) => achseStart + i);
+
+  const reihe = (j, auffuellen) =>
+    positionen.map((a) => {
+      const i = a - j.erster_tag;
+      if (i >= 0 && i < j.kumuliert.length) return j.kumuliert[i];
+      if (!auffuellen) return null;
+      return i < 0 ? 0 : j.kumuliert[j.kumuliert.length - 1]; // vor Saisonbeginn 0, danach Endstand
+    });
+
   const datasets = gewaehlt.map((j) => {
-    const farbe = PALETTE[zustand.vergleichSlots.get(j.jahr)];
+    const farbe = jahresFarbe(j.jahr, daten.aktuelles_jahr);
+    const aktuell = j.jahr === daten.aktuelles_jahr;
     return {
       label: String(j.jahr),
-      data: j.kumuliert,
+      data: reihe(j, false),
       borderColor: farbe,
       backgroundColor: farbe,
-      borderWidth: 2,
+      borderWidth: aktuell ? 3 : 2,
       pointRadius: 0,
       pointHoverRadius: 5,
       pointHoverBorderColor: "#fcfcfb",
       pointHoverBorderWidth: 2,
       tension: 0,
-      _start: j.start,
+      order: aktuell ? 0 : 1,
+      _erster: j.erster_tag,
+      _erstesDatum: j.erstes_datum,
     };
   });
-  const tagDatum = (start, i) => {
-    const d = new Date(start + "T00:00:00");
-    d.setDate(d.getDate() + i);
-    return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.`;
-  };
+
+  // MIN/MAX-Fläche: zuerst die MIN-Kurve, dann die MAX-Kurve mit Füllung bis zur vorherigen
+  if (bandJahre.length === 2) {
+    const [jMin, jMax] = bandJahre;
+    const rand = { borderColor: BEREICH_RAND, borderWidth: 1, borderDash: [4, 3], pointRadius: 0, pointHoverRadius: 0, tension: 0, order: 5 };
+    datasets.push(
+      { ...rand, label: `Min ${jMin.jahr}`, data: reihe(jMin, true), fill: false, _band: "Min", _erster: jMin.erster_tag, _erstesDatum: jMin.erstes_datum },
+      { ...rand, label: `Max ${jMax.jahr}`, data: reihe(jMax, true), fill: "-1", backgroundColor: BEREICH_FLAECHE, _band: "Max", _erster: jMax.erster_tag, _erstesDatum: jMax.erstes_datum }
+    );
+  }
+
   diagrammSetzen("vergleich", $("#chart-vergleich"), {
     type: "line",
-    data: { labels, datasets },
+    data: { labels: positionen, datasets },
     options: {
       maintainAspectRatio: false,
       animation: false,
       interaction: { mode: "index", intersect: false },
       plugins: {
         legend: { display: false },
+        filler: { propagate: false },
         tooltip: {
           ...tooltipBasis,
+          filter: (it) => it.raw !== null,
           itemSort: (a, b) => b.raw - a.raw,
           callbacks: {
-            title: (it) => `Saisontag ${it[0].label}`,
-            label: (it) => ` ${it.dataset.label} (${tagDatum(it.dataset._start, it.dataIndex)}): CHF ${chf(it.raw)}`,
+            title: (it) => {
+              const a = positionen[it[0].dataIndex];
+              return `KW ${achseKw(a)}, ${ACHSE_TAGE[((a % 7) + 7) % 7]}`;
+            },
+            label: (it) => {
+              const a = positionen[it.dataIndex];
+              const i = a - it.dataset._erster;
+              if (it.dataset._band) {
+                const zusatz = i < 0 ? " (noch nicht begonnen)" : "";
+                return ` ${it.dataset.label}${zusatz}: CHF ${chf(it.raw)}`;
+              }
+              return ` ${it.dataset.label} (${datumPlus(it.dataset._erstesDatum, i)}): CHF ${chf(it.raw)}`;
+            },
           },
         },
       },
       scales: {
         ...achsen(),
-        x: { ...achsen().x, title: { display: true, text: "Saisontag", color: GEDAEMPFT } },
+        x: {
+          ...achsen().x,
+          title: { display: true, text: "Kalenderwoche", color: GEDAEMPFT },
+          ticks: {
+            color: GEDAEMPFT,
+            maxRotation: 0,
+            autoSkip: false,
+            callback: (_, i) => (((positionen[i] % 7) + 7) % 7 === 0 ? `KW ${achseKw(positionen[i])}` : null),
+          },
+        },
       },
     },
   });
-  $("#legende-vergleich").innerHTML = gewaehlt
-    .map((j) => `<span><i style="background:${PALETTE[zustand.vergleichSlots.get(j.jahr)]}"></i>${j.jahr}: CHF ${chf(j.total)}</span>`)
-    .join("");
+
+  const legende = gewaehlt.map(
+    (j) => `<span><i style="background:${jahresFarbe(j.jahr, daten.aktuelles_jahr)}"></i>${j.jahr}: CHF ${chf(j.total)}${markeMinMax(j.jahr, daten.bereich)}</span>`
+  );
+  if (bandJahre.length === 2) {
+    legende.push(`<span><i class="gestrichelt"></i>Bereich Min ${daten.bereich.min} – Max ${daten.bereich.max}</span>`);
+  }
+  $("#legende-vergleich").innerHTML = legende.join("");
 }
+
+// Zeichnet „Max“ / „Min“ über die entsprechenden Balken
+const balkenMarken = {
+  id: "balkenMarken",
+  afterDatasetsDraw(chart, _args, opts) {
+    const { ctx } = chart;
+    const meta = chart.getDatasetMeta(0);
+    ctx.save();
+    ctx.font = "600 11px system-ui, -apple-system, 'Segoe UI', sans-serif";
+    ctx.fillStyle = TINTE_2;
+    ctx.textAlign = "center";
+    (opts.marken || []).forEach((text, i) => {
+      if (text && meta.data[i]) ctx.fillText(text, meta.data[i].x, meta.data[i].y - 5);
+    });
+    ctx.restore();
+  },
+};
 
 function jahresTotalDiagramm(daten) {
   const jahre = daten.jahre;
+  const b = daten.bereich;
+  const farbe = (j) =>
+    j.jahr === b.max || j.jahr === b.min ? "#b54a12" : j.jahr >= daten.aktuelles_jahr ? "#f5b58f" : TAGESFARBE;
   diagrammSetzen("jahre", $("#chart-jahre"), {
     type: "bar",
+    plugins: [balkenMarken],
     data: {
       labels: jahre.map((j) => j.jahr),
       datasets: [{
         label: "Jahrestotal",
         data: jahre.map((j) => j.total),
-        backgroundColor: TAGESFARBE,
+        backgroundColor: jahre.map(farbe),
         hoverBackgroundColor: "#c9531f",
         borderRadius: { topLeft: 4, topRight: 4 },
         borderSkipped: "bottom",
@@ -518,39 +708,76 @@ function jahresTotalDiagramm(daten) {
     options: {
       maintainAspectRatio: false,
       animation: false,
+      layout: { padding: { top: 16 } },
       plugins: {
         legend: { display: false },
-        tooltip: { ...tooltipBasis, displayColors: false, callbacks: { label: (it) => `CHF ${chf(it.raw)}` } },
+        balkenMarken: { marken: jahre.map((j) => (j.jahr === b.max ? "Max" : j.jahr === b.min ? "Min" : "")) },
+        tooltip: {
+          ...tooltipBasis,
+          displayColors: false,
+          callbacks: {
+            label: (it) => {
+              const j = jahre[it.dataIndex];
+              const zusatz = j.jahr === b.max ? " (Max)" : j.jahr === b.min ? " (Min)" : j.jahr >= daten.aktuelles_jahr ? " (laufend)" : "";
+              return `CHF ${chf(it.raw)}${zusatz}`;
+            },
+          },
+        },
       },
       scales: achsen(),
     },
   });
 }
 
+// ---------- MIN/MAX-Jahre anpassen ----------
+
+$("#btn-bereich").addEventListener("click", async () => {
+  const daten = zustand.vergleich;
+  if (!daten) return;
+  const aus = new Set(daten.ausgenommen);
+  $("#bereich-body").innerHTML = daten.abgeschlossen.length
+    ? daten.abgeschlossen
+        .map(
+          (j) => `<tr><td><label><input type="checkbox" value="${j.jahr}" ${aus.has(j.jahr) ? "" : "checked"}>${j.jahr}${markeMinMax(j.jahr, daten.bereich)}</label></td><td class="zahl">CHF ${chf(j.total)}</td></tr>`
+        )
+        .join("")
+    : `<tr><td class="gedaempft">Noch keine abgeschlossenen Jahre.</td></tr>`;
+  const dlg = $("#dlg-bereich");
+  dlg.returnValue = "";
+  dlg.showModal();
+  if ((await dialogAntwort(dlg)) !== "ok") return;
+  const ausgenommen = [...dlg.querySelectorAll("#bereich-body input:not(:checked)")].map((c) => Number(c.value));
+  try {
+    await rufe("vergleich_einstellen", daten.anzahl_jahre, ausgenommen);
+    await vergleichZeigen();
+  } catch (e) {
+    hinweis(e.message, true);
+  }
+});
+$("#bereich-alle").addEventListener("click", () => document.querySelectorAll("#bereich-body input").forEach((c) => (c.checked = true)));
+
 // ---------- Übersicht ----------
 
 async function uebersichtZeigen() {
   const u = await rufe("uebersicht");
-  const kopfStat = "<thead><tr><th>Jahr</th><th>Start</th><th class='zahl'>Tage</th><th class='zahl'>Total</th><th class='zahl'>Mittel</th><th class='zahl'>Min</th><th class='zahl'>Max</th></tr></thead>";
+  const kopfStat = "<thead><tr><th>Jahr</th><th>Erster Tag</th><th>Letzter Tag</th><th class='zahl'>Tage</th><th class='zahl'>Total</th><th class='zahl'>Mittel</th><th class='zahl'>Min</th><th class='zahl'>Max</th></tr></thead>";
   $("#tabelle-statistik").innerHTML =
     kopfStat +
     "<tbody>" +
     u.zeilen
       .map((z) => {
         const s = z.statistik;
-        return `<tr><td>${z.jahr}</td><td>${datumCH(z.start)}</td><td class="zahl">${s.tage}</td><td class="zahl">${chf(s.total)}</td><td class="zahl">${chf(s.mittel)}</td><td class="zahl">${chf(s.min)}</td><td class="zahl">${chf(s.max)}</td></tr>`;
+        const klasse = z.jahr === u.bereich.max ? "zeile-max" : z.jahr === u.bereich.min ? "zeile-min" : "";
+        return `<tr class="${klasse}"><td>${z.jahr}${markeMinMax(z.jahr, u.bereich)}</td><td>${datumCH(z.erster_tag)}</td><td>${datumCH(z.letzter_tag)}</td><td class="zahl">${s.tage}</td><td class="zahl">${chf(s.total)}</td><td class="zahl">${chf(s.mittel)}</td><td class="zahl">${chf(s.min)}</td><td class="zahl">${chf(s.max)}</td></tr>`;
       })
       .join("") +
     "</tbody>";
 
-  const wochenKopf = Array.from({ length: u.max_wochen }, (_, i) => `<th class="zahl">Wo ${i + 1}</th>`).join("");
+  const wochenKopf = u.kws.map((w) => `<th class="zahl">KW ${w}</th>`).join("");
   $("#tabelle-wochen").innerHTML =
     `<thead><tr><th>Jahr</th>${wochenKopf}</tr></thead><tbody>` +
     u.zeilen
-      .map((z) => {
-        const zellen = Array.from({ length: u.max_wochen }, (_, i) => `<td class="zahl">${z.wochen[i] ? chf(z.wochen[i]) : ""}</td>`).join("");
-        return `<tr><td>${z.jahr}</td>${zellen}</tr>`;
-      })
+      .map((z) => `<tr class="${z.jahr === u.bereich.max ? "zeile-max" : z.jahr === u.bereich.min ? "zeile-min" : ""}"><td>${z.jahr}${markeMinMax(z.jahr, u.bereich)}</td>${z.wochen.map((w) => `<td class="zahl">${chf(w)}</td>`).join("")}</tr>`)
       .join("") +
     "</tbody>";
 }
@@ -596,8 +823,8 @@ $("#btn-import").addEventListener("click", async () => {
   $("#import-konflikte").hidden = k.length === 0;
   $("#konflikt-body").innerHTML = k
     .map((c, i) => {
-      const was = c.art === "start" ? "Startdatum" : datumCH(c.datum);
-      const fmt = (v) => (c.art === "start" ? datumCH(v) : `CHF ${chf(v)}`);
+      const was = datumCH(c.datum);
+      const fmt = (v) => `CHF ${chf(v)}`;
       return `<tr><td>${c.jahr}</td><td>${was}</td>
         <td class="zahl"><label class="wahl"><input type="radio" name="k${i}" value="mein" data-id="${c.id}" checked>${fmt(c.mein)}</label></td>
         <td class="zahl"><label class="wahl"><input type="radio" name="k${i}" value="import" data-id="${c.id}">${fmt(c.import)}</label></td></tr>`;
@@ -607,29 +834,23 @@ $("#btn-import").addEventListener("click", async () => {
   const dlg = $("#dlg-import");
   dlg.returnValue = "";
   dlg.showModal();
-  dlg.addEventListener(
-    "close",
-    async () => {
-      if (dlg.returnValue !== "ok") {
-        await window.pywebview.api.import_abbrechen();
-        return;
-      }
-      const wahl = {};
-      dlg.querySelectorAll("#konflikt-body input:checked").forEach((r) => (wahl[r.dataset.id] = r.value));
-      try {
-        const info = await rufe("import_abschliessen", wahl);
-        gespeichert();
-        hinweis(
-          `Import abgeschlossen: ${info.neue_jahre} neue Saison(s), ${info.neue_tage} neue Tage, ` +
-            `${info.konflikte_import} Werte übernommen, ${info.konflikte_mein} eigene behalten.`
-        );
-        await statusLaden();
-      } catch (e) {
-        hinweis(`Import fehlgeschlagen: ${e.message}`, true);
-      }
-    },
-    { once: true }
-  );
+  if ((await dialogAntwort(dlg)) !== "ok") {
+    await window.pywebview.api.import_abbrechen();
+    return;
+  }
+  const wahl = {};
+  dlg.querySelectorAll("#konflikt-body input:checked").forEach((r) => (wahl[r.dataset.id] = r.value));
+  try {
+    const info = await rufe("import_abschliessen", wahl);
+    gespeichert();
+    hinweis(
+      `Import abgeschlossen: ${info.neue_jahre} neue Saison(s), ${info.neue_tage} neue Tage, ` +
+        `${info.konflikte_import} Werte übernommen, ${info.konflikte_mein} eigene behalten.`
+    );
+    await statusLaden();
+  } catch (e) {
+    hinweis(`Import fehlgeschlagen: ${e.message}`, true);
+  }
 });
 
 const alleSetzen = (wert) => document.querySelectorAll(`#konflikt-body input[value="${wert}"]`).forEach((r) => (r.checked = true));

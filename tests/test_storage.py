@@ -8,7 +8,7 @@ from kuerbis.storage import DatenFehler, laden, speichern
 
 
 def beispiel(betrag=10):
-    return Daten({2025: Saison(2025, date(2025, 8, 25), {date(2025, 9, 1): betrag})})
+    return Daten({2025: Saison(2025, {date(2025, 9, 1): betrag})})
 
 
 def test_fehlende_datei_ergibt_leere_daten(tmp_path):

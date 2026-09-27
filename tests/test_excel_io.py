@@ -50,9 +50,11 @@ def test_alte_excel_stimmt_mit_uebersicht_ueberein(alt):
         assert st["min"] == pytest.approx(mn or 0), jahr  # 'Üb' zeigt 0 als leer
 
 
-def test_alte_excel_startdatum(alt):
-    assert alt.saisons[2025].start == date(2025, 8, 25)
-    assert alt.saisons[2014].start == date(2014, 9, 1)
+def test_alte_excel_erster_und_letzter_tag(alt):
+    # Die Saison beginnt beim ersten Eintrag, nicht beim Startdatum des Blatts
+    s = alt.saisons[2025]
+    assert min(s.eintraege) > date(2025, 8, 25)
+    assert all(t.year == 2025 for t in s.eintraege)
 
 
 def test_alte_excel_leere_jahre_werden_ausgelassen(alt):
@@ -65,8 +67,8 @@ def test_alte_excel_leere_jahre_werden_ausgelassen(alt):
 def beispiel():
     return Daten(
         {
-            2024: Saison(2024, date(2024, 8, 26), {date(2024, 9, 2): 12.5, date(2024, 9, 3): 40}),
-            2025: Saison(2025, date(2025, 8, 25), {}),
+            2024: Saison(2024, {date(2024, 9, 2): 12.5, date(2024, 9, 3): 40, date(2024, 9, 4): 0}),
+            2025: Saison(2025, {}),
         }
     )
 
@@ -105,3 +107,28 @@ def test_fremdes_excel(tmp_path):
     wb.save(pfad)
     with pytest.raises(ValueError):
         importieren(pfad)
+
+
+def test_eigenes_excel_altes_format_mit_startdatum(tmp_path):
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Daten"
+    ws.append(["Jahr", "Startdatum", "Datum", "Betrag"])
+    ws.append([2024, date(2024, 8, 26), date(2024, 9, 2), 12.5])
+    ws.append([2025, date(2025, 8, 25), None, None])
+    pfad = tmp_path / "alt.xlsx"
+    wb.save(pfad)
+    assert importieren(pfad) == Daten({2024: Saison(2024, {date(2024, 9, 2): 12.5}), 2025: Saison(2025, {})})
+
+
+def test_excel_export_uebersicht_mit_kw(tmp_path):
+    import openpyxl
+
+    pfad = tmp_path / "export.xlsx"
+    excel_exportieren(pfad, beispiel())
+    ws = openpyxl.load_workbook(pfad)["Übersicht"]
+    kopf = [c.value for c in ws[1]]
+    assert kopf[:2] == ["Jahr", "KW 36"]
+    assert kopf[-5:] == ["Min", "Max", "Mittel", "Tage", "Total"]
