@@ -1,0 +1,54 @@
+# Baut bei jedem Push auf main/master die Kuerbisverkauf.exe und veröffentlicht sie als Release.
+name: Build und Release
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write # Release und Tag anlegen
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Abhängigkeiten installieren
+        run: uv sync --locked
+
+      - name: Tests und .exe bauen
+        shell: pwsh
+        run: ./build.ps1
+
+      - name: Release veröffentlichen
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (uv version --short).Trim()
+          $tag = "v$version-build.${{ github.run_number }}"
+          $kurz = "${{ github.sha }}".Substring(0, 7)
+          $nachricht = git log -1 --pretty=%B
+          $notes = @"
+          Automatischer Build von $kurz.
+
+          $nachricht
+
+          **Download:** ``Kuerbisverkauf.exe`` unten unter *Assets* herunterladen und starten (keine Installation nötig).
+          "@
+          gh release create $tag dist/Kuerbisverkauf.exe `
+            --target "${{ github.sha }}" `
+            --title "Kürbisverkauf $version (Build ${{ github.run_number }})" `
+            --notes $notes `
+            --latest

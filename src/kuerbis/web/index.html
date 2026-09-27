@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8">
+  <title>Kürbisverkauf</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="kopf">
+    <div class="marke">
+      <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
+        <path d="M16 8c-1-3 0-5 2-6" stroke="#5b7a2a" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+        <ellipse cx="11" cy="19" rx="7" ry="9" fill="#e0701f"/>
+        <ellipse cx="21" cy="19" rx="7" ry="9" fill="#e0701f"/>
+        <ellipse cx="16" cy="19" rx="6" ry="10" fill="#f08a2c"/>
+      </svg>
+      <span>Kürbisverkauf</span>
+    </div>
+    <nav class="reiter" role="tablist">
+      <button role="tab" data-ansicht="erfassung" aria-selected="true">Erfassung</button>
+      <button role="tab" data-ansicht="vergleich" aria-selected="false">Vergleich</button>
+      <button role="tab" data-ansicht="uebersicht" aria-selected="false">Übersicht</button>
+    </nav>
+    <div class="aktionen">
+      <button id="btn-import" class="knopf">Importieren…</button>
+      <div class="menue">
+        <button id="btn-export" class="knopf" aria-haspopup="true">Exportieren ▾</button>
+        <div id="export-menue" class="menue-liste" hidden>
+          <button data-export="excel">Als Excel (.xlsx)</button>
+          <button data-export="json">Als JSON (.json)</button>
+        </div>
+      </div>
+      <button id="btn-speicherort" class="knopf">Speicherort…</button>
+    </div>
+  </header>
+
+  <div id="hinweis" class="hinweis" hidden></div>
+
+  <main>
+    <!-- Erfassung -->
+    <section id="ansicht-erfassung" class="ansicht">
+      <div class="werkzeug">
+        <label>Saison
+          <select id="jahr-wahl"></select>
+        </label>
+        <span id="start-anzeige" class="gedaempft"></span>
+        <button id="btn-start-aendern" class="knopf klein">Startdatum ändern</button>
+        <span class="luecke"></span>
+        <button id="btn-neue-saison" class="knopf primaer">Neue Saison</button>
+      </div>
+
+      <div id="leer-hinweis" class="leer" hidden>
+        <p>Noch keine Daten vorhanden.</p>
+        <p>Starten Sie mit <b>Neue Saison</b> oder übernehmen Sie die alte Excel-Datei mit <b>Importieren…</b></p>
+      </div>
+
+      <div id="erfassung-inhalt" class="zweispaltig">
+        <div class="tabelle-rahmen">
+          <table class="tage">
+            <thead>
+              <tr><th>Wo</th><th>Tag</th><th>Datum</th><th class="zahl">Betrag</th><th class="zahl">Total</th><th class="zahl">Wochentotal</th></tr>
+            </thead>
+            <tbody id="tage-body"></tbody>
+          </table>
+        </div>
+        <div class="seite">
+          <div class="kacheln" id="kacheln"></div>
+          <div class="karte">
+            <h3>Tageseinnahmen</h3>
+            <div class="diagramm"><canvas id="chart-tage"></canvas></div>
+          </div>
+          <div class="karte">
+            <h3>Laufendes Total</h3>
+            <div class="diagramm"><canvas id="chart-laufend"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Vergleich -->
+    <section id="ansicht-vergleich" class="ansicht" hidden>
+      <div class="werkzeug">
+        <span class="gedaempft">Jahre (max. 8):</span>
+        <div id="jahr-chips" class="chips"></div>
+      </div>
+      <div class="karte">
+        <h3>Laufendes Total über die Saison</h3>
+        <p class="unterzeile">Tag 1 = Startdatum der jeweiligen Saison</p>
+        <div class="diagramm gross"><canvas id="chart-vergleich"></canvas></div>
+        <div id="legende-vergleich" class="legende"></div>
+      </div>
+      <div class="karte">
+        <h3>Jahrestotal</h3>
+        <div class="diagramm"><canvas id="chart-jahre"></canvas></div>
+      </div>
+    </section>
+
+    <!-- Übersicht -->
+    <section id="ansicht-uebersicht" class="ansicht" hidden>
+      <div class="karte">
+        <h3>Statistik pro Jahr</h3>
+        <div class="tabelle-rahmen flach"><table class="uebersicht" id="tabelle-statistik"></table></div>
+      </div>
+      <div class="karte">
+        <h3>Wochentotale pro Jahr</h3>
+        <div class="tabelle-rahmen flach breit"><table class="uebersicht" id="tabelle-wochen"></table></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="fuss">
+    <span>Daten: <span id="datenpfad"></span></span>
+    <span id="speicher-status"></span>
+  </footer>
+
+  <!-- Dialog: Neue Saison / Startdatum -->
+  <dialog id="dlg-saison">
+    <form method="dialog">
+      <h2 id="dlg-saison-titel">Neue Saison</h2>
+      <label>Jahr <input id="dlg-jahr" type="number" min="1990" max="2100" required></label>
+      <label>Startdatum <input id="dlg-start" type="date" required></label>
+      <p id="dlg-saison-fehler" class="fehler"></p>
+      <div class="knoepfe">
+        <button value="abbrechen" class="knopf" formnovalidate>Abbrechen</button>
+        <button value="ok" class="knopf primaer">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Dialog: Import-Konflikte -->
+  <dialog id="dlg-import" class="breit">
+    <form method="dialog">
+      <h2>Daten importieren</h2>
+      <p id="import-zusammenfassung"></p>
+      <div id="import-konflikte" hidden>
+        <p>Bei diesen Einträgen unterscheiden sich die Werte. Welcher soll gelten?</p>
+        <div class="knoepfe links">
+          <button type="button" class="knopf klein" id="alle-mein">Alle meine behalten</button>
+          <button type="button" class="knopf klein" id="alle-import">Alle importierten übernehmen</button>
+        </div>
+        <div class="tabelle-rahmen konflikte">
+          <table>
+            <thead><tr><th>Jahr</th><th>Was</th><th class="zahl">Mein Wert</th><th class="zahl">Importiert</th></tr></thead>
+            <tbody id="konflikt-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="knoepfe">
+        <button value="abbrechen" class="knopf">Abbrechen</button>
+        <button value="ok" class="knopf primaer">Übernehmen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Dialog: Speicherort -->
+  <dialog id="dlg-speicherort">
+    <form method="dialog">
+      <h2>Speicherort der Daten</h2>
+      <p>Aktuell: <code id="dlg-pfad"></code></p>
+      <div class="auswahl">
+        <button type="button" class="knopf" id="ort-verschieben">Daten an einen neuen Ort verschieben…</button>
+        <p class="gedaempft">Speichert die aktuellen Daten am gewählten Ort (z. B. in OneDrive) und arbeitet ab dann dort.</p>
+        <button type="button" class="knopf" id="ort-oeffnen">Vorhandene Datendatei öffnen…</button>
+        <p class="gedaempft">Verwendet ab sofort eine bestehende Datei, z. B. eine, die jemand mit Ihnen teilt.</p>
+      </div>
+      <div class="knoepfe">
+        <button value="zu" class="knopf">Schliessen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Dialog: Rückfrage -->
+  <dialog id="dlg-frage">
+    <form method="dialog">
+      <p id="frage-text"></p>
+      <div class="knoepfe" id="frage-knoepfe"></div>
+    </form>
+  </dialog>
+
+  <script src="chart.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
