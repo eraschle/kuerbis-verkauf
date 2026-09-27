@@ -39,9 +39,54 @@ function hinweis(text, fehler = false) {
 }
 $("#hinweis").addEventListener("click", () => ($("#hinweis").hidden = true));
 
-function gespeichert() {
+// ---------- Speicherstatus und offene Eingaben ----------
+
+const AUTOSPEICHERN_MS = 1000; // nach so langer Tipp-Pause wird automatisch gespeichert
+const PRUEFEN_MS = 30000; // so oft wird nach fremden Änderungen und der Sperre geschaut
+
+const zweistellig = (n) => String(n).padStart(2, "0");
+const uhrzeit = () => {
   const d = new Date();
-  $("#speicher-status").textContent = `Gespeichert ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return `${zweistellig(d.getHours())}:${zweistellig(d.getMinutes())}`;
+};
+const zeitCH = (iso) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}. ${iso.slice(11, 16)}` : "?");
+
+function speicherStatus(art, text) {
+  const el = $("#speicher-status");
+  el.className = `speicher-status ${art}`;
+  el.textContent = text;
+}
+
+// Eingaben, die noch nicht gespeichert sind: geänderte Tagesfelder und ein Betrag in der Zeile „Neu“
+function offeneFelder() {
+  return [...document.querySelectorAll("#tage-body input")].filter((i) => i.value !== i.dataset.alt);
+}
+function offeneEingaben() {
+  return offeneFelder().length + ($("#neu-betrag").value.trim() ? 1 : 0);
+}
+
+let gemeldetOffen = 0;
+function offenAktualisieren() {
+  const n = offeneEingaben();
+  if (n !== gemeldetOffen) {
+    gemeldetOffen = n;
+    window.pywebview.api.offen_melden(n); // damit das Fenster beim Schliessen nachfragt
+  }
+  if (n > 0) speicherStatus("offen", `⚠ ${n === 1 ? "1 Eingabe" : `${n} Eingaben`} noch nicht gespeichert`);
+  else if (zustand.nurAnsicht) speicherStatus("ansicht", "🔒 Nur Ansicht");
+}
+
+function gespeichert() {
+  if (offeneEingaben() > 0) return offenAktualisieren();
+  speicherStatus("ok", `✓ Alle Änderungen gespeichert ${uhrzeit()}`);
+}
+
+// Speichervorgänge laufen nacheinander, damit sich Autospeichern und Enter nicht überholen
+let speicherKette = Promise.resolve();
+function inReihe(fn) {
+  const p = speicherKette.then(fn, fn);
+  speicherKette = p.catch(() => {});
+  return p;
 }
 
 function frage(text, knoepfe) {
@@ -87,6 +132,7 @@ const zustand = {
   ansicht: "erfassung",
   vergleich: null, // letzte Antwort von api.vergleich()
   vergleichAuswahl: null, // Set der gezeigten Jahre; null = Standard (letzte N Jahre)
+  nurAnsicht: false, // Daten sind von jemand anderem gesperrt
 };
 const charts = {};
 
@@ -97,12 +143,15 @@ async function start() {
   Chart.defaults.font.size = 12;
   Chart.defaults.color = TINTE_2;
   await statusLaden();
+  if (!zustand.nurAnsicht && offeneEingaben() === 0) speicherStatus("ok", "✓ Alle Änderungen gespeichert");
+  setInterval(() => pruefenJetzt(false), PRUEFEN_MS);
 }
 
 async function statusLaden(bevorzugtesJahr) {
   const st = await window.pywebview.api.status();
   $("#datenpfad").textContent = st.datenpfad;
   zustand.jahre = st.jahre;
+  sperreAnzeigen(st);
   if (st.fehler) {
     hinweis(st.fehler, true);
     speicherortDialog();
@@ -120,6 +169,101 @@ async function statusLaden(bevorzugtesJahr) {
   await ansichtZeigen(zustand.ansicht);
 }
 
+// ---------- Sperre (nur Ansicht) und fremde Änderungen ----------
+
+function sperreAnzeigen(st) {
+  zustand.nurAnsicht = st.nur_ansicht;
+  document.body.classList.toggle("nur-ansicht", st.nur_ansicht);
+  $("#sperr-balken").hidden = !st.nur_ansicht;
+  $("#neu-bereich").hidden = st.nur_ansicht;
+  for (const id of ["#btn-neue-saison", "#btn-import", "#ort-verschieben"]) $(id).disabled = st.nur_ansicht;
+  document.querySelectorAll("#tage-body input").forEach((i) => (i.readOnly = st.nur_ansicht));
+  if (!st.nur_ansicht) {
+    if ($("#speicher-status").classList.contains("ansicht")) speicherStatus("ok", "✓ Alle Änderungen gespeichert");
+    return;
+  }
+  const s = st.sperre || {};
+  const wer = `${s.benutzer || "jemand anders"} (${s.pc || "?"})`;
+  $("#sperr-text").textContent = st.sperre_veraltet
+    ? `Die Daten waren durch ${wer} gesperrt, die Sperre wurde aber seit ${zeitCH(s.aktualisiert)} nicht mehr erneuert – ` +
+      "das Programm wurde dort vermutlich nicht sauber beendet. Sie können die Sperre übernehmen."
+    : `Nur Ansicht: Die Daten werden gerade von ${wer} bearbeitet (seit ${zeitCH(s.seit)}).`;
+  $("#btn-sperre-uebernehmen").classList.toggle("primaer", st.sperre_veraltet);
+  zustand.sperreVeraltet = st.sperre_veraltet;
+  speicherStatus("ansicht", "🔒 Nur Ansicht");
+}
+
+async function pruefenJetzt(manuell) {
+  let st;
+  try {
+    st = await rufe("pruefen");
+  } catch (e) {
+    if (manuell) hinweis(e.message, true);
+    else speicherStatus("fehler", "⚠ Datendatei nicht erreichbar");
+    return;
+  }
+  const warNurAnsicht = zustand.nurAnsicht;
+  if (st.geaendert && offeneEingaben() === 0) await statusLaden();
+  else sperreAnzeigen(st);
+  if (warNurAnsicht && !st.nur_ansicht) hinweis("Die Daten sind wieder frei – Sie können bearbeiten.");
+  else if (!warNurAnsicht && st.nur_ansicht) hinweis("Jemand anders bearbeitet die Daten jetzt – Ihre Ansicht ist schreibgeschützt.", true);
+  else if (st.geaendert) hinweis("Die Daten wurden von jemand anderem geändert und neu geladen.");
+  else if (manuell) hinweis(st.nur_ansicht ? "Die Daten sind weiterhin gesperrt." : "Die Daten sind frei.");
+}
+
+$("#btn-sperre-pruefen").addEventListener("click", () => pruefenJetzt(true));
+$("#btn-sperre-uebernehmen").addEventListener("click", async () => {
+  if (!zustand.sperreVeraltet) {
+    const wahl = await frage(
+      "Die Sperre ist noch aktiv. Übernehmen Sie sie nur, wenn dort sicher niemand mehr arbeitet – " +
+        "sonst arbeiten zwei Personen gleichzeitig an den Daten.",
+      [
+        { wert: "abbrechen", label: "Abbrechen" },
+        { wert: "ok", label: "Trotzdem übernehmen", primaer: true },
+      ]
+    );
+    if (wahl !== "ok") return;
+  }
+  try {
+    await rufe("sperre_uebernehmen");
+    await statusLaden();
+    hinweis("Sie bearbeiten jetzt die Daten.");
+  } catch (e) {
+    hinweis(e.message, true);
+  }
+});
+
+// Vom Programm aufgerufen, wenn das Fenster mit ungespeicherten Eingaben geschlossen wird
+window.schliessenAnfragen = async function () {
+  const n = offeneEingaben();
+  if (n === 0) return window.pywebview.api.beenden();
+  const wahl = await frage(
+    `${n === 1 ? "Eine Eingabe ist" : `${n} Eingaben sind`} noch nicht gespeichert. Was soll passieren?`,
+    [
+      { wert: "abbrechen", label: "Zurück" },
+      { wert: "verwerfen", label: "Verwerfen und schliessen" },
+      { wert: "speichern", label: "Speichern und schliessen", primaer: true },
+    ]
+  );
+  if (wahl === "verwerfen") return window.pywebview.api.beenden();
+  if (wahl !== "speichern") return;
+  if ((await allesSpeichern()) && offeneEingaben() === 0) return window.pywebview.api.beenden();
+  hinweis("Nicht alles konnte gespeichert werden – bitte die markierten Felder prüfen.", true);
+};
+
+// Speichert alle offenen Eingaben; true, wenn alles geklappt hat
+async function allesSpeichern() {
+  let ok = true;
+  const daten = offeneFelder().map((i) => i.dataset.datum);
+  for (const datum of daten) {
+    // Die Tabelle kann sich beim Speichern neu aufbauen – das Feld deshalb jedes Mal frisch suchen
+    const feld = document.querySelector(`#tage-body input[data-datum="${datum}"]`);
+    if (feld && feld.value !== feld.dataset.alt) ok = (await betragSpeichern(feld)) && ok;
+  }
+  if ($("#neu-betrag").value.trim()) ok = (await neuenTagSpeichern()) && ok;
+  return ok;
+}
+
 // ---------- Reiter ----------
 
 document.querySelectorAll(".reiter button").forEach((b) =>
@@ -127,6 +271,8 @@ document.querySelectorAll(".reiter button").forEach((b) =>
 );
 
 async function ansichtZeigen(name) {
+  // Offene Eingaben vor dem Wechsel speichern (die Tabelle wird beim Zurückkommen neu aufgebaut)
+  if (zustand.ansicht === "erfassung" && name !== "erfassung" && offeneEingaben() > 0) await allesSpeichern();
   zustand.ansicht = name;
   document.querySelectorAll(".reiter button").forEach((b) => b.setAttribute("aria-selected", b.dataset.ansicht === name));
   document.querySelectorAll(".ansicht").forEach((s) => (s.hidden = s.id !== `ansicht-${name}`));
@@ -141,10 +287,17 @@ async function ansichtZeigen(name) {
 
 // ---------- Erfassung ----------
 
-$("#jahr-wahl").addEventListener("change", (e) => {
-  zustand.jahr = Number(e.target.value);
+$("#jahr-wahl").addEventListener("change", async (e) => {
+  const neu = Number(e.target.value);
+  if (offeneEingaben() > 0) await allesSpeichern(); // gehört noch zum bisherigen Jahr
+  zustand.jahr = neu;
   erfassungZeigen();
 });
+
+// Noch nicht gespeicherte Werte der Tagesfelder, damit ein Neuaufbau der Tabelle sie nicht verliert
+function offeneWerteSammeln() {
+  return Object.fromEntries(offeneFelder().map((i) => [i.dataset.datum, i.value]));
+}
 
 async function erfassungZeigen() {
   const leer = zustand.jahr === null;
@@ -154,8 +307,9 @@ async function erfassungZeigen() {
   $("#bereich-anzeige").textContent = "";
   if (leer) return;
   $("#jahr-wahl").value = zustand.jahr;
+  const offen = zustand.saison && zustand.saison.jahr === zustand.jahr ? offeneWerteSammeln() : {};
   zustand.saison = await rufe("saison", zustand.jahr);
-  tabelleAufbauen();
+  tabelleAufbauen(offen);
   neueZeileVorbereiten();
   saisonAktualisieren();
   zurRelevantenZeile();
@@ -164,7 +318,7 @@ async function erfassungZeigen() {
 // Kennung der Tabellenform: ändert sie sich, wird die Tabelle neu aufgebaut
 const tabellenForm = (s) => (s.zeilen.length ? `${s.zeilen[0].datum}/${s.zeilen.length}` : "leer");
 
-function tabelleAufbauen() {
+function tabelleAufbauen(offen = {}) {
   const s = zustand.saison;
   const heute = heuteIso();
   const body = $("#tage-body");
@@ -188,26 +342,66 @@ function tabelleAufbauen() {
       <td class="zahl laufend"></td>
       <td class="zahl wochentotal"></td>`;
     const input = tr.querySelector("input");
-    input.value = eingabeText(z.betrag);
     input.dataset.datum = z.datum;
-    input.dataset.alt = input.value;
-    input.addEventListener("change", () => betragSpeichern(input));
+    input.dataset.alt = eingabeText(z.betrag); // zuletzt gespeicherter Wert
+    input.value = z.datum in offen ? offen[z.datum] : input.dataset.alt;
+    input.readOnly = zustand.nurAnsicht;
+    input.addEventListener("input", () => {
+      offenAktualisieren();
+      clearTimeout(input._autoTimer);
+      input._autoTimer = setTimeout(() => betragSpeichern(input), AUTOSPEICHERN_MS);
+    });
+    input.addEventListener("change", () => {
+      clearTimeout(input._autoTimer);
+      betragSpeichern(input);
+    });
     input.addEventListener("keydown", tastenNavigation);
     input.addEventListener("focus", () => input.select());
     body.appendChild(tr);
   });
+  offenAktualisieren();
+}
+
+// Neuaufbau nach fremden Änderungen oder geänderter Tabellenlänge – Fokus und offene Werte bleiben erhalten
+function tabelleNeuAufbauen() {
+  const fokus = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.datum : null;
+  tabelleAufbauen(offeneWerteSammeln());
+  neueZeileVorbereiten(true);
+  saisonAktualisieren();
+  const ziel = fokus && document.querySelector(`#tage-body input[data-datum="${fokus}"]`);
+  if (ziel) ziel.focus();
+}
+
+// Jemand anders hat denselben Tag inzwischen geändert: nachfragen, welcher Wert gilt.
+// Liefert die neue Saison-Antwort oder null, wenn der fremde Wert bleiben soll.
+async function konfliktKlaeren(k, eingabe) {
+  const fmt = (v) => (v === null || v === undefined ? "leer" : `CHF ${chf(v)}`);
+  const wahl = await frage(
+    `Der Betrag vom ${datumCH(k.datum)} wurde inzwischen von jemand anderem geändert: ` +
+      `${fmt(k.erwartet)} → ${fmt(k.aktuell)}. Ihre Eingabe: ${fmt(k.neu)}. Welcher Wert soll gelten?`,
+    [
+      { wert: "fremd", label: `${fmt(k.aktuell)} behalten` },
+      { wert: "meiner", label: `${fmt(k.neu)} speichern`, primaer: true },
+    ]
+  );
+  if (wahl !== "meiner") return null;
+  const antwort = await rufe("betrag_setzen", zustand.jahr, k.datum, eingabe, eingabeText(k.aktuell));
+  if (antwort.konflikt) throw new Error("Der Wert wurde erneut geändert – bitte nochmals eingeben.");
+  return antwort;
 }
 
 const WOCHENTAGE_JS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 
-function neueZeileVorbereiten() {
+function neueZeileVorbereiten(eingabeBehalten = false) {
   const d = $("#neu-datum");
   d.min = `${zustand.jahr}-01-01`;
   d.max = `${zustand.jahr}-12-31`;
+  if (eingabeBehalten && $("#neu-betrag").value.trim()) return; // angefangene Eingabe nicht verlieren
   d.value = zustand.saison.naechster_tag;
   $("#neu-betrag").value = "";
   $("#neu-betrag").classList.remove("ungueltig");
   neuWochentagZeigen();
+  offenAktualisieren();
 }
 
 function neuWochentagZeigen() {
@@ -232,26 +426,51 @@ $("#neu-datum").addEventListener("keydown", (e) => {
     $("#neu-betrag").focus();
   }
 });
+$("#neu-betrag").addEventListener("input", offenAktualisieren);
 
-async function neuenTagSpeichern() {
-  const betrag = $("#neu-betrag");
-  const datum = $("#neu-datum").value;
-  if (!betrag.value.trim()) return;
-  try {
-    zustand.saison = await rufe("betrag_setzen", zustand.jahr, datum, betrag.value);
-    $("#hinweis").hidden = true;
-    tabelleAufbauen();
-    neueZeileVorbereiten();
-    saisonAktualisieren();
-    gespeichert();
-    const zeile = document.querySelector(`#tage-body input[data-datum="${datum}"]`);
-    if (zeile) zeile.classList.add("gespeichert");
-    $(".tabelle-rahmen").scrollTop = $(".tabelle-rahmen").scrollHeight;
-    betrag.focus();
-  } catch (e) {
-    betrag.classList.add("ungueltig");
-    hinweis(`${datumCH(datum)}: ${e.message}`, true);
-  }
+// Zeile „Neu“: wird mit Enter gespeichert (das Datum kann vorher noch geändert werden)
+function neuenTagSpeichern() {
+  return inReihe(async () => {
+    const betrag = $("#neu-betrag");
+    const datum = $("#neu-datum").value;
+    const eingabe = betrag.value;
+    if (!eingabe.trim()) return true;
+    // Gibt es den Tag schon in der Tabelle, ist dessen gespeicherter Wert die Erwartung
+    const vorhanden = document.querySelector(`#tage-body input[data-datum="${datum}"]`);
+    const erwartet = vorhanden ? vorhanden.dataset.alt : "";
+    speicherStatus("laeuft", "Speichert…");
+    try {
+      let antwort = await rufe("betrag_setzen", zustand.jahr, datum, eingabe, erwartet);
+      if (antwort.konflikt) {
+        antwort = await konfliktKlaeren(antwort.konflikt, eingabe);
+        if (!antwort) {
+          betrag.value = "";
+          zustand.saison = await rufe("saison", zustand.jahr);
+          tabelleNeuAufbauen();
+          neueZeileVorbereiten();
+          gespeichert();
+          return true;
+        }
+      }
+      zustand.saison = antwort;
+      $("#hinweis").hidden = true;
+      if (antwort.extern_geaendert) hinweis("Die Daten wurden inzwischen von jemand anderem geändert und neu geladen.");
+      betrag.value = "";
+      tabelleNeuAufbauen();
+      neueZeileVorbereiten();
+      gespeichert();
+      const zeile = document.querySelector(`#tage-body input[data-datum="${datum}"]`);
+      if (zeile) zeile.classList.add("gespeichert");
+      $(".tabelle-rahmen").scrollTop = $(".tabelle-rahmen").scrollHeight;
+      betrag.focus();
+      return true;
+    } catch (e) {
+      betrag.classList.add("ungueltig");
+      hinweis(`${datumCH(datum)}: ${e.message}`, true);
+      speicherStatus("fehler", "⚠ Nicht gespeichert – siehe Meldung oben");
+      return false;
+    }
+  });
 }
 
 function saisonAktualisieren() {
@@ -280,41 +499,63 @@ function kachelnZeigen(st) {
     k("Bester Tag", st.max === null ? "–" : `CHF ${chf(st.max)}`, st.min === null ? "" : `schwächster: CHF ${chf(st.min)}`);
 }
 
-async function betragSpeichern(input) {
-  const datum = input.dataset.datum;
-  try {
-    zustand.saison = await rufe("betrag_setzen", zustand.jahr, datum, input.value);
-    $("#hinweis").hidden = true;
-    gespeichert();
-    if (tabellenForm(zustand.saison) !== zustand.form) {
-      // Erster oder letzter Tag entfernt: Tabelle neu aufbauen
-      const fokus = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.datum : null;
-      tabelleAufbauen();
-      neueZeileVorbereiten();
-      saisonAktualisieren();
-      const ziel = fokus && document.querySelector(`#tage-body input[data-datum="${fokus}"]`);
-      if (ziel) ziel.focus();
-      return;
+// Tagesfeld speichern (bei Enter, beim Verlassen und automatisch nach einer Tipp-Pause); true bei Erfolg
+function betragSpeichern(input) {
+  return inReihe(async () => {
+    const datum = input.dataset.datum;
+    const eingabe = input.value;
+    if (zustand.nurAnsicht || eingabe === input.dataset.alt) return true;
+    speicherStatus("laeuft", "Speichert…");
+    try {
+      let antwort = await rufe("betrag_setzen", zustand.jahr, datum, eingabe, input.dataset.alt);
+      if (antwort.konflikt) {
+        antwort = await konfliktKlaeren(antwort.konflikt, eingabe);
+        if (!antwort) {
+          // Fremden Wert behalten: neu laden, das Feld zeigt danach den aktuellen Wert
+          zustand.saison = await rufe("saison", zustand.jahr);
+          const z = zustand.saison.zeilen.find((r) => r.datum === datum);
+          input.value = input.dataset.alt = eingabeText(z ? z.betrag : null);
+          tabelleNeuAufbauen();
+          gespeichert();
+          return true;
+        }
+      }
+      zustand.saison = antwort;
+      $("#hinweis").hidden = true;
+      const z = antwort.zeilen.find((r) => r.datum === datum);
+      const gespeicherterWert = eingabeText(z ? z.betrag : null);
+      input.dataset.alt = gespeicherterWert;
+      // Nur ersetzen, wenn inzwischen nicht weitergetippt wurde
+      if (input.value === eingabe) input.value = gespeicherterWert;
+      input.classList.remove("ungueltig");
+      if (antwort.extern_geaendert || tabellenForm(antwort) !== zustand.form) {
+        if (antwort.extern_geaendert) hinweis("Die Daten wurden inzwischen von jemand anderem geändert und neu geladen.");
+        tabelleNeuAufbauen(); // fremde Werte übernehmen bzw. erster/letzter Tag entfernt
+      } else {
+        input.classList.remove("gespeichert");
+        void input.offsetWidth; // Animation neu starten
+        input.classList.add("gespeichert");
+        saisonAktualisieren();
+      }
+      gespeichert();
+      return true;
+    } catch (e) {
+      input.classList.add("ungueltig");
+      hinweis(`${datumCH(datum)}: ${e.message}`, true);
+      speicherStatus("fehler", "⚠ Nicht gespeichert – siehe Meldung oben");
+      return false;
     }
-    const z = zustand.saison.zeilen.find((r) => r.datum === datum);
-    input.value = eingabeText(z ? z.betrag : null);
-    input.dataset.alt = input.value;
-    input.classList.remove("ungueltig");
-    input.classList.remove("gespeichert");
-    void input.offsetWidth; // Animation neu starten
-    input.classList.add("gespeichert");
-    saisonAktualisieren();
-  } catch (e) {
-    input.classList.add("ungueltig");
-    hinweis(`${datumCH(datum)}: ${e.message}`, true);
-  }
+  });
 }
 
 function tastenNavigation(e) {
   const richtung = e.key === "Enter" || e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
   if (e.key === "Escape") {
+    clearTimeout(e.target._autoTimer);
     e.target.value = e.target.dataset.alt;
     e.target.classList.remove("ungueltig");
+    offenAktualisieren();
+    if (offeneEingaben() === 0) gespeichert();
     return;
   }
   if (!richtung) return;
@@ -867,8 +1108,16 @@ function speicherortDialog() {
   if (!dlg.open) dlg.showModal();
 }
 
+// Offene Eingaben gehören zur bisherigen Datei – vor einem Wechsel des Speicherorts sichern
+async function vorOrtwechsel() {
+  if (offeneEingaben() === 0 || (await allesSpeichern())) return true;
+  hinweis("Bitte zuerst die nicht gespeicherten Eingaben prüfen.", true);
+  return false;
+}
+
 $("#ort-verschieben").addEventListener("click", async () => {
   const dlg = $("#dlg-speicherort");
+  if (!(await vorOrtwechsel())) return;
   try {
     let r = await rufe("speicherort_verschieben_dialog");
     if (r.abgebrochen) return;
@@ -892,6 +1141,7 @@ $("#ort-verschieben").addEventListener("click", async () => {
 });
 
 $("#ort-oeffnen").addEventListener("click", async () => {
+  if (!(await vorOrtwechsel())) return;
   try {
     const r = await rufe("speicherort_oeffnen_dialog");
     if (r.abgebrochen) return;

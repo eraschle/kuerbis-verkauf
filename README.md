@@ -28,6 +28,15 @@ wählt *Importieren…*; bei abweichenden Werten erscheint eine Liste zur Auswah
 er geändert werden (z. B. in einen OneDrive-Ordner). Beim Speichern bleibt jeweils der vorherige
 Stand als `kuerbis-daten.json.bak` erhalten.
 
+**Gemeinsam über OneDrive:** Wer das Programm zuerst öffnet, kann bearbeiten; bei allen anderen öffnet es
+**nur zur Ansicht** (oben steht, wer gerade bearbeitet). Dafür legt das Programm neben der Datendatei eine
+Sperrdatei `kuerbis-daten.json.lock` an und löscht sie beim Beenden. Nach einem Absturz gilt die Sperre nach
+10 Minuten als veraltet und kann übernommen werden. Hat trotzdem jemand anders die Datei geändert, werden
+dessen Änderungen übernommen statt überschrieben; bei einem widersprüchlichen Tag fragt das Programm nach.
+
+**Speichern:** Eingaben werden sofort bzw. nach einer kurzen Tipp-Pause gespeichert (Anzeige unten rechts).
+Beim Schliessen mit noch nicht gespeicherten Eingaben fragt das Programm nach.
+
 ## Entwicklung
 
 Benötigt [uv](https://docs.astral.sh/uv/).

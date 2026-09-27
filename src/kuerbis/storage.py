@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -14,11 +15,19 @@ class DatenFehler(Exception):
     pass
 
 
+def fingerabdruck(pfad: Path) -> str | None:
+    """Prüfsumme des Dateiinhalts (None, wenn die Datei fehlt) – erkennt Änderungen durch andere."""
+    try:
+        return hashlib.sha256(pfad.read_bytes()).hexdigest()
+    except FileNotFoundError:
+        return None
+
+
 def laden(pfad: Path) -> Daten:
     if not pfad.exists():
         return Daten()
     try:
-        obj = json.loads(pfad.read_text(encoding="utf-8"))
+        obj = json.loads(pfad.read_text(encoding="utf-8-sig"))  # -sig: verträgt ein BOM (Windows-Editor)
         return daten_aus_dict(obj)
     except (OSError, json.JSONDecodeError, ValueError) as e:
         raise DatenFehler(f"Die Datendatei {pfad} kann nicht gelesen werden: {e}") from None

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import sys
+import threading
 from pathlib import Path
 
 import webview
 
 from kuerbis.api import Api
+
+SPERRE_TAKT_SEKUNDEN = 60
 
 
 def web_ordner() -> Path:
@@ -28,8 +31,31 @@ def main() -> None:
         text_select=True,
     )
     api.fenster_setzen(fenster)
-    # Die .exe liefert ihr Symbol selbst; im Entwicklungsmodus aus der .ico-Datei
-    webview.start(icon=str(web_ordner() / "kuerbis.ico"))
+
+    def beim_schliessen():
+        # Läuft im GUI-Thread: kein evaluate_js hier (würde blockieren) – die Rückfrage übernimmt die Oberfläche.
+        if api.darf_schliessen():
+            api.beenden(fenster_schliessen=False)  # schliesst ohnehin gerade
+            return True
+        threading.Thread(target=lambda: fenster.evaluate_js("schliessenAnfragen()"), daemon=True).start()
+        return False  # Schliessen abbrechen, bis die Rückfrage beantwortet ist
+
+    fenster.events.closing += beim_schliessen
+
+    # Sperre regelmässig auffrischen, auch wenn die Oberfläche (z. B. minimiert) gedrosselt läuft
+    stopp = threading.Event()
+
+    def takt():
+        while not stopp.wait(SPERRE_TAKT_SEKUNDEN):
+            api.sperre_auffrischen()
+
+    threading.Thread(target=takt, daemon=True).start()
+    try:
+        # Die .exe liefert ihr Symbol selbst; im Entwicklungsmodus aus der .ico-Datei
+        webview.start(icon=str(web_ordner() / "kuerbis.ico"))
+    finally:
+        stopp.set()
+        api.beenden(fenster_schliessen=False)  # Sperre sicher freigeben
 
 
 if __name__ == "__main__":

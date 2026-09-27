@@ -28,7 +28,7 @@ def _datei(basis: Path | None) -> Path:
 
 def _alle(basis: Path | None) -> dict:
     try:
-        obj = json.loads(_datei(basis).read_text(encoding="utf-8"))
+        obj = json.loads(_datei(basis).read_text(encoding="utf-8-sig"))  # -sig: verträgt ein BOM
         return obj if isinstance(obj, dict) else {}
     except (OSError, ValueError):
         return {}
