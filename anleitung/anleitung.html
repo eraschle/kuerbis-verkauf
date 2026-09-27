@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kürbisverkauf – Anleitung</title>
+<style>
+  @page { size: A4; margin: 2cm 1.8cm; }
+  body {
+    font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 11pt; line-height: 1.5; color: #2b2622; background: #fffdf9;
+    max-width: 50em; margin: 0 auto; padding: 1.5em 16px 3em;
+  }
+  h1 { color: #b4531c; font-size: 22pt; margin: 0 0 0.2em; }
+  h2 { color: #b4531c; font-size: 15pt; margin: 1.8em 0 0.5em; padding-bottom: 0.2em; border-bottom: 2px solid #f0c9a8; }
+  h3 { font-size: 12pt; margin: 1.3em 0 0.3em; }
+  p, li { margin: 0.35em 0; }
+  a { color: #b4531c; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 10pt; background: #f4ece4; padding: 0 3px; }
+  .untertitel { color: #6b6158; margin: 0 0 1.5em; }
+  .download {
+    background: #fbeee2; border: 1px solid #e8b58c; padding: 0.8em 1em; margin: 1em 0;
+  }
+  .download a.knopf {
+    display: inline-block; background: #c0561d; color: #fff; text-decoration: none;
+    font-weight: bold; padding: 0.4em 0.9em; margin: 0.3em 0;
+  }
+  .hinweis { background: #eef4e6; border-left: 4px solid #5b7a2a; padding: 0.5em 0.9em; margin: 0.8em 0; }
+  .achtung { background: #fdf3dc; border-left: 4px solid #d19a1a; padding: 0.5em 0.9em; margin: 0.8em 0; }
+  figure { margin: 1em 0; text-align: center; }
+  figure img { max-width: 100%; width: 400px; border: 1px solid #ddd; }
+  figure img.breit { width: 640px; }
+  figcaption { font-size: 9.5pt; color: #6b6158; margin-top: 0.3em; }
+  table { border-collapse: collapse; width: 100%; margin: 0.6em 0; }
+  th, td { border: 1px solid #e3d6ca; padding: 4px 8px; text-align: left; vertical-align: top; }
+  th { background: #f4ece4; }
+  .inhalt ol { margin: 0.3em 0; }
+  .seitenumbruch { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<h1>Kürbisverkauf</h1>
+<p class="untertitel">Anleitung für die erste Benutzung</p>
+
+<div class="download">
+  <b>Download:</b> Die aktuelle Version gibt es immer hier:<br>
+  <a class="knopf" href="https://github.com/eraschle/kuerbis-verkauf/releases/latest/download/Kuerbisverkauf.exe">Kuerbisverkauf.exe herunterladen</a><br>
+  Direktlink: <a href="https://github.com/eraschle/kuerbis-verkauf/releases/latest/download/Kuerbisverkauf.exe">github.com/eraschle/kuerbis-verkauf/releases/latest/download/Kuerbisverkauf.exe</a><br>
+  Alle Versionen: <a href="https://github.com/eraschle/kuerbis-verkauf/releases/latest">github.com/eraschle/kuerbis-verkauf/releases</a>
+</div>
+
+<div class="inhalt">
+<b>Inhalt</b>
+<ol>
+  <li>Weshalb es dieses Programm gibt</li>
+  <li>Herunterladen und am richtigen Ort ablegen</li>
+  <li>Erster Start: die Windows-Meldung</li>
+  <li>Alte Excel-Daten übernehmen</li>
+  <li>Eine Saison erfassen</li>
+  <li>Auswerten: Vergleich und Übersicht</li>
+  <li>Wo die Daten gespeichert werden (JSON und Excel)</li>
+  <li>Speicherort ändern</li>
+  <li>Daten mit anderen teilen</li>
+</ol>
+</div>
+
+<h2>1. Weshalb es dieses Programm gibt</h2>
+<p>Die Einnahmen aus dem Kürbisverkauf wurden seit 1998 in einer Excel-Datei
+(<code>Kürbissverkauf 1998-2025.xlsx</code>) festgehalten: pro Jahr ein Blatt, jeden Tag ein Betrag,
+dazu Wochen- und Jahrestotale sowie ein Übersichtsblatt. Das funktioniert, ist aber aufwändig:
+Jedes Jahr muss ein neues Blatt angelegt, Formeln kopiert und die Übersicht nachgeführt werden –
+und ein Vergleich über viele Jahre ist mühsam.</p>
+<p>Das Programm <b>Kürbisverkauf</b> ersetzt diese Excel-Datei:</p>
+<ul>
+  <li>Tägliche Einnahmen einfach eintippen – Totale, Wochentotale und Statistik rechnet das Programm selbst.</li>
+  <li>Pro Saison Diagramme mit den Tageseinnahmen und dem laufenden Total.</li>
+  <li>Jahre direkt vergleichen – gleiche Wochentage liegen übereinander, damit z.&nbsp;B. Wochenenden vergleichbar sind.</li>
+  <li>Alle bisherigen Daten aus der Excel-Datei lassen sich übernehmen; ein Export nach Excel ist jederzeit möglich.</li>
+  <li>Keine Installation, kein Internet nötig, automatisches Speichern.</li>
+</ul>
+
+<h2>2. Herunterladen und am richtigen Ort ablegen</h2>
+<ol>
+  <li>Über den Link oben die Datei <code>Kuerbisverkauf.exe</code> herunterladen.</li>
+  <li>Die Datei aus dem Ordner <i>Downloads</i> an einen festen Ort verschieben, z.&nbsp;B. in einen neuen Ordner
+      <code>Dokumente\Kürbisverkauf</code>. <br>
+      <b>Wichtig:</b> Die Daten werden beim ersten Start <b>neben der .exe</b> gespeichert (siehe Kapitel&nbsp;7).
+      Liegt die .exe im Download-Ordner, landen auch die Daten dort – und werden beim Aufräumen leicht gelöscht.</li>
+  <li>Optional: Rechtsklick auf die Datei → <i>Weitere Optionen anzeigen</i> → <i>Senden an</i> → <i>Desktop (Verknüpfung erstellen)</i>.</li>
+</ol>
+<p>Eine Installation ist nicht nötig. Das Programm braucht Windows 10 oder 11.</p>
+
+<h2 class="seitenumbruch">3. Erster Start: die Windows-Meldung</h2>
+<p>Beim ersten Doppelklick auf <code>Kuerbisverkauf.exe</code> zeigt Windows eine blaue Meldung
+<b>«Der Computer wurde durch Windows geschützt»</b>.</p>
+
+<h3>Weshalb erscheint diese Meldung?</h3>
+<p>Microsoft Defender SmartScreen warnt bei jedem Programm aus dem Internet, das Windows noch nicht kennt.
+Grosse Softwarefirmen kaufen dafür ein Zertifikat, mit dem ihre Programme «signiert» sind. Das Kürbisverkauf-Programm
+ist ein kleines, selbst geschriebenes Programm ohne solches Zertifikat – darum steht dort
+<i>«Unbekannter Herausgeber»</i>. Die Meldung sagt also nicht, dass das Programm gefährlich ist, sondern nur,
+dass Windows es nicht kennt.</p>
+
+<div class="hinweis">Die Meldung nur dann übergehen, wenn die Datei wirklich über den Link oben
+(<code>github.com/eraschle/kuerbis-verkauf</code>) heruntergeladen wurde und <code>Kuerbisverkauf.exe</code> heisst.</div>
+
+<h3>Schritt 1: «Weitere Informationen» anklicken</h3>
+<p>Auf den unterstrichenen Text <b>Weitere Informationen</b> klicken. <i>Nicht ausführen</i> würde den Start abbrechen.</p>
+<figure>
+  <img src="bilder/01-weitere-informationen.png" alt="SmartScreen-Meldung mit Pfeil auf «Weitere Informationen»">
+  <figcaption>Bild 1: Auf «Weitere Informationen» klicken</figcaption>
+</figure>
+
+<h3>Schritt 2: «Trotzdem ausführen» anklicken</h3>
+<p>Jetzt erscheinen der Name der App (<code>Kuerbisverkauf.exe</code>) und der Herausgeber. Mit
+<b>Trotzdem ausführen</b> startet das Programm.</p>
+<figure>
+  <img src="bilder/02-trotzdem-ausfuehren.png" alt="SmartScreen-Meldung mit markierter Schaltfläche «Trotzdem ausführen»">
+  <figcaption>Bild 2: Auf «Trotzdem ausführen» klicken</figcaption>
+</figure>
+
+<p>Diese Meldung kommt nur beim <b>ersten Start</b>. Danach startet das Programm ohne Rückfrage.
+Wird später eine neuere Version heruntergeladen, erscheint die Meldung für diese neue Datei einmal wieder.</p>
+
+<h2 class="seitenumbruch">4. Alte Excel-Daten übernehmen</h2>
+<p>Beim allerersten Start ist das Programm leer. So kommen die bisherigen Zahlen hinein:</p>
+<ol>
+  <li>Oben rechts auf <b>Importieren…</b> klicken.</li>
+  <li>Die alte Excel-Datei <code>Kürbissverkauf 1998-2025.xlsx</code> auswählen.</li>
+  <li>Die Zusammenfassung prüfen und <b>Übernehmen</b> klicken.</li>
+</ol>
+<p>Danach sind alle Jahre im Programm und werden automatisch gespeichert. Die Excel-Datei selbst wird nicht verändert.</p>
+
+<h2>5. Eine Saison erfassen</h2>
+<ol>
+  <li>Im Reiter <b>Erfassung</b> auf <b>Neue Saison</b> klicken, das Jahr bestätigen und <b>Speichern</b>.</li>
+  <li>In der untersten Zeile <b>Neu</b> den Betrag des Tages eintippen und <b>Enter</b> drücken.</li>
+  <li>Das Datum ist mit dem Folgetag vorbelegt und kann bei Bedarf geändert werden (z.&nbsp;B. wenn ein Tag ausgelassen wurde).</li>
+</ol>
+<ul>
+  <li>Beträge mit Komma oder Punkt sind beide möglich (<code>12,50</code> oder <code>12.50</code>).</li>
+  <li>Einen bestehenden Betrag korrigieren: in der Tabelle anklicken, überschreiben, Enter.
+      Mit Enter und den Pfeiltasten springt man zur nächsten Zeile.</li>
+  <li>Es gibt keinen Speichern-Knopf – <b>jede Eingabe wird sofort gespeichert</b>. Unten im Fenster steht, wo.</li>
+  <li>Rechts sieht man Total, Anzahl Verkaufstage, Mittel pro Tag, besten und schwächsten Tag sowie die Diagramme.</li>
+  <li>Über das Feld <b>Saison</b> oben links lassen sich frühere Jahre ansehen und bearbeiten.</li>
+</ul>
+
+<h2>6. Auswerten: Vergleich und Übersicht</h2>
+<table>
+  <tr><th>Reiter</th><th>Was er zeigt</th></tr>
+  <tr><td><b>Vergleich</b></td><td>Das laufende Total mehrerer Jahre übereinander, ausgerichtet nach Kalenderwoche und Wochentag.
+    Die graue Fläche zeigt den Bereich zwischen dem schwächsten und dem stärksten Jahr. Untypische Jahre lassen sich
+    unter <i>MIN/MAX-Jahre…</i> ausnehmen. Darunter das Jahrestotal pro Jahr.</td></tr>
+  <tr><td><b>Übersicht</b></td><td>Statistik pro Jahr (Min, Max, Mittel, Tage, Total) und die Wochentotale aller Jahre als Tabelle –
+    wie das frühere Blatt «Üb» in Excel.</td></tr>
+</table>
+
+<h2 class="seitenumbruch">7. Wo die Daten gespeichert werden (JSON und Excel)</h2>
+<p>Das Programm arbeitet mit <b>einer einzigen Datendatei</b>: <code>kuerbis-daten.json</code>.
+Darin stehen alle Jahre und Beträge. JSON ist ein einfaches Textformat, das das Programm schnell und
+zuverlässig lesen und schreiben kann.</p>
+<table>
+  <tr><th>Datei</th><th>Wozu</th></tr>
+  <tr><td><code>kuerbis-daten.json</code></td><td><b>Die eigentlichen Daten.</b> Wird bei jeder Eingabe automatisch gespeichert.
+    Standardmässig im selben Ordner wie <code>Kuerbisverkauf.exe</code>.</td></tr>
+  <tr><td><code>kuerbis-daten.json.bak</code></td><td>Sicherheitskopie: der Stand vor der letzten Speicherung. Liegt daneben und
+    wird automatisch nachgeführt.</td></tr>
+  <tr><td>Excel-Datei (<code>.xlsx</code>)</td><td>Nur für <b>Import und Export</b>. Das Programm speichert nicht laufend in Excel,
+    kann aber jederzeit eine Excel-Datei erzeugen (<i>Exportieren → Als Excel</i>), die jede Person ohne das Programm öffnen kann.</td></tr>
+  <tr><td>JSON-Export (<code>.json</code>)</td><td>Exakte Kopie aller Daten – ideal als Backup oder zum Weitergeben an jemanden, der das
+    Programm ebenfalls benutzt.</td></tr>
+</table>
+<div class="hinweis">Faustregel: <b>JSON</b> ist das Arbeitsformat und Backup, <b>Excel</b> ist zum Anschauen und Weitergeben.</div>
+<p>Der aktuell verwendete Speicherort steht immer <b>unten links</b> im Programmfenster (<i>Daten: …</i>).
+Die Wahl des Speicherorts selbst merkt sich das Programm unter
+<code>%APPDATA%\Kuerbisverkauf\einstellungen.json</code>.</p>
+<div class="achtung"><b>Backup:</b> Ab und zu <i>Exportieren → Als JSON</i> wählen und die Datei auf einem USB-Stick
+oder in der Cloud ablegen. Oder den Speicherort gleich in einen OneDrive-Ordner legen (nächstes Kapitel).</div>
+
+<h2 class="seitenumbruch">8. Speicherort ändern</h2>
+<p>Oben rechts auf <b>Speicherort…</b> klicken (grün markiert). Es öffnet sich der Dialog
+<i>Speicherort der Daten</i> mit dem aktuellen Pfad und zwei Möglichkeiten:</p>
+<figure>
+  <img class="breit" src="bilder/03-speicherort.png" alt="Dialog «Speicherort der Daten» mit den Schaltflächen zum Verschieben und Öffnen">
+  <figcaption>Bild 3: «Speicherort…» (grün) öffnet den Dialog; «Vorhandene Datendatei öffnen…» (rot)</figcaption>
+</figure>
+
+<h3>Daten an einen neuen Ort verschieben…</h3>
+<p>Speichert die <b>aktuellen</b> Daten am gewählten Ort und arbeitet ab dann dort weiter – z.&nbsp;B. in einem
+OneDrive-Ordner, damit die Daten automatisch gesichert sind. Liegt am Ziel bereits eine Datendatei, fragt das Programm nach,
+ob sie überschrieben oder stattdessen geöffnet werden soll.</p>
+
+<h3>Vorhandene Datendatei öffnen… (rot markiert)</h3>
+<p>Verwendet ab sofort eine <b>bestehende</b> <code>.json</code>-Datendatei, z.&nbsp;B. eine, die jemand in einem
+gemeinsamen Ordner teilt, oder die Datei nach einem Wechsel auf einen neuen Computer. Die bisher geöffnete Datei bleibt
+unverändert an ihrem Ort.</p>
+
+<p>Mit <b>Schliessen</b> den Dialog verlassen. Der neue Speicherort gilt auch bei allen weiteren Starts.</p>
+<div class="achtung">Eine gemeinsame Datendatei (z.&nbsp;B. in OneDrive) nie gleichzeitig auf zwei Computern bearbeiten –
+sonst überschreibt die eine Speicherung die andere.</div>
+
+<h2>9. Daten mit anderen teilen</h2>
+<ol>
+  <li><b>Exportieren ▾</b> → <i>Als Excel (.xlsx)</i> für Personen ohne Programm, oder <i>Als JSON (.json)</i> für Personen mit Programm.</li>
+  <li>Die Datei per E-Mail, USB-Stick oder Cloud weitergeben.</li>
+  <li>Die andere Person wählt <b>Importieren…</b> und die erhaltene Datei. Neue Jahre und Tage werden ergänzt.
+      Wo sich Werte unterscheiden, zeigt das Programm eine Liste: pro Eintrag <i>Mein Wert</i> oder <i>Importiert</i> wählen
+      (oder <i>Alle meine behalten</i> / <i>Alle importierten übernehmen</i>), dann <b>Übernehmen</b>.</li>
+</ol>
+
+<h2>Kurz zusammengefasst</h2>
+<ol>
+  <li>.exe herunterladen und in einen festen Ordner legen.</li>
+  <li>Beim ersten Start: <i>Weitere Informationen</i> → <i>Trotzdem ausführen</i>.</li>
+  <li><i>Importieren…</i> → alte Excel-Datei → <i>Übernehmen</i>.</li>
+  <li>Jedes Jahr: <i>Neue Saison</i> → Beträge in der Zeile <i>Neu</i> eintippen und Enter drücken.</li>
+  <li>Gespeichert wird automatisch in <code>kuerbis-daten.json</code>; ändern unter <i>Speicherort…</i>.</li>
+</ol>
+
+</body>
+</html>
