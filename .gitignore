@@ -16,3 +16,6 @@ kuerbis-daten.json*
 # Verkaufsdaten und Exporte nie ins Repository
 /*.xlsx
 /Kuerbisverkauf-*.json
+
+# Worktrees und lokale Claude-Dateien
+.claude/

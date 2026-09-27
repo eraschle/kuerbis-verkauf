@@ -41,3 +41,24 @@ def test_ordner_wird_angelegt(tmp_path):
     pfad = tmp_path / "neu" / "daten.json"
     speichern(pfad, beispiel())
     assert json.loads(pfad.read_text(encoding="utf-8"))["format"] == "kuerbisverkauf"
+
+
+def test_datei_mit_bom_wird_gelesen(tmp_path):
+    # z. B. nach Bearbeitung mit dem Windows-Editor oder PowerShell 5
+    pfad = tmp_path / "daten.json"
+    speichern(pfad, beispiel())
+    pfad.write_bytes(b"\xef\xbb\xbf" + pfad.read_bytes())
+    assert laden(pfad) == beispiel()
+
+
+def test_fingerabdruck_aendert_sich_nur_mit_dem_inhalt(tmp_path):
+    from kuerbis.storage import fingerabdruck
+
+    pfad = tmp_path / "daten.json"
+    assert fingerabdruck(pfad) is None
+    speichern(pfad, beispiel(10))
+    f1 = fingerabdruck(pfad)
+    speichern(pfad, beispiel(10))
+    assert fingerabdruck(pfad) == f1  # gleicher Inhalt, gleicher Abdruck
+    speichern(pfad, beispiel(20))
+    assert fingerabdruck(pfad) != f1

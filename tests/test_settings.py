@@ -11,6 +11,13 @@ def test_rundlauf(tmp_path):
     assert datenpfad_lesen(tmp_path) == ziel
 
 
+def test_einstellungen_mit_bom(tmp_path):
+    # PowerShell 5 und der Windows-Editor schreiben UTF-8 oft mit BOM
+    ziel = tmp_path / "d.json"
+    (tmp_path / "einstellungen.json").write_bytes(b"\xef\xbb\xbf" + f'{{"datenpfad": "{ziel.as_posix()}"}}'.encode())
+    assert datenpfad_lesen(tmp_path) == ziel
+
+
 def test_kaputte_einstellung_ergibt_standard(tmp_path):
     (tmp_path / "einstellungen.json").write_text("xx", encoding="utf-8")
     assert datenpfad_lesen(tmp_path) == standard_datenpfad()

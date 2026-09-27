@@ -61,6 +61,25 @@ die vom MIN/MAX-Bereich ausgenommenen Jahre). Fehlt die Datei am gemerkten Ort
   `kuerbis-daten.json.bak`.
 - Gespeichert wird automatisch nach jeder Änderung.
 
+## Gemeinsame Nutzung (z. B. OneDrive) und sicheres Speichern
+
+- **Keine fremden Änderungen überschreiben:** Das Programm merkt sich die Prüfsumme der Datei beim Laden/Speichern.
+  Vor jeder Änderung wird verglichen; hat jemand anders die Datei geändert, wird sie neu geladen und nur die eigene
+  Änderung darauf angewendet. Die Oberfläche schickt beim Speichern eines Tages den zuvor angezeigten Wert mit; hat
+  jemand anders genau diesen Tag anders gesetzt, wird nachgefragt, welcher Wert gilt. Alle 30 s wird zusätzlich auf
+  fremde Änderungen geprüft und die Anzeige aktualisiert. Eine plötzlich fehlende Datei wird nie als „leer“ behandelt.
+- **Sperrdatei** `<datendatei>.lock` (Benutzer, PC, seit, aufgefrischt): beim Öffnen gesetzt, alle 60 s aufgefrischt,
+  beim Beenden gelöscht. Hält jemand anders die Sperre, öffnet das Programm **nur zur Ansicht** (Balken mit Name/PC,
+  „Erneut prüfen“, „Sperre übernehmen“); Schreiben wird auch in Python verweigert. Nach 10 min ohne Auffrischen gilt
+  eine Sperre als veraltet (Absturz) und kann übernommen werden. Wird die Sperre frei, übernimmt das Programm sie beim
+  nächsten Prüfen selbst.
+- **Nichts geht verloren:** Tagesfelder werden bei Enter, beim Verlassen und automatisch nach 1 s Tipp-Pause
+  gespeichert (nacheinander, nie überlappend). Beim Schliessen mit offenen Eingaben (auch ein Betrag in der Zeile
+  „Neu“ ohne Enter) fragt ein Dialog: Speichern und schliessen / Verwerfen und schliessen / Zurück. Vor Jahres-,
+  Reiter- und Speicherortwechsel werden offene Eingaben gespeichert. Anzeige unten rechts: gespeichert / speichert /
+  nicht gespeichert / Fehler / nur Ansicht.
+- JSON-Dateien werden mit `utf-8-sig` gelesen (verträgt ein BOM, z. B. nach Bearbeitung im Windows-Editor).
+
 ## Berechnungen (wie in Excel)
 
 - **Woche** = Kalenderwoche (ISO, Montag–Sonntag) im Jahr der Saison; Einträge Ende Dezember zählen als KW 53/54

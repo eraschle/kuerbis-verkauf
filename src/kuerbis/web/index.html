@@ -34,6 +34,14 @@
     </div>
   </header>
 
+  <div id="sperr-balken" class="sperr-balken" hidden>
+    <span class="schloss" aria-hidden="true">🔒</span>
+    <span id="sperr-text"></span>
+    <span class="luecke"></span>
+    <button id="btn-sperre-pruefen" class="knopf klein">Erneut prüfen</button>
+    <button id="btn-sperre-uebernehmen" class="knopf klein">Sperre übernehmen</button>
+  </div>
+
   <div id="hinweis" class="hinweis" hidden></div>
 
   <main>
@@ -60,7 +68,7 @@
               <tr><th>KW</th><th>Tag</th><th>Datum</th><th class="zahl">Betrag</th><th class="zahl">Total</th><th class="zahl" title="Wochentotal">Woche</th></tr>
             </thead>
             <tbody id="tage-body"></tbody>
-            <tfoot>
+            <tfoot id="neu-bereich">
               <tr class="neu-zeile">
                 <td class="wo">Neu</td>
                 <td id="neu-wochentag"></td>
@@ -124,7 +132,7 @@
 
   <footer class="fuss">
     <span>Daten: <span id="datenpfad"></span></span>
-    <span id="speicher-status"></span>
+    <span id="speicher-status" class="speicher-status" role="status" aria-live="polite"></span>
   </footer>
 
   <!-- Dialog: Neue Saison / Startdatum -->

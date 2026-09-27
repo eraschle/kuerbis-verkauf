@@ -171,6 +171,23 @@ th {
   color: var(--gedaempft); border-top: 1px solid var(--linie); background: var(--karte);
 }
 
+/* Speicherstatus unten rechts */
+.speicher-status { font-weight: 600; }
+.speicher-status.ok { color: var(--ok); }
+.speicher-status.laeuft { color: var(--tinte-2); }
+.speicher-status.offen { color: #9a6700; }
+.speicher-status.fehler { color: var(--fehler); }
+.speicher-status.ansicht { color: var(--tinte-2); }
+
+/* Nur Ansicht (Daten von jemand anderem gesperrt) */
+.sperr-balken {
+  display: flex; align-items: center; gap: 10px; margin: 12px 20px 0; padding: 10px 14px;
+  border-radius: var(--radius); background: #fff6e0; color: #6b4a00; border: 1px solid #f0d99a;
+}
+.sperr-balken .schloss { font-size: 16px; }
+body.nur-ansicht .tage input { color: var(--tinte-2); cursor: default; }
+body.nur-ansicht .tage input:hover { border-color: transparent; }
+
 /* Dialoge */
 dialog {
   border: 1px solid var(--rahmen); border-radius: 12px; padding: 20px 22px; min-width: 380px;

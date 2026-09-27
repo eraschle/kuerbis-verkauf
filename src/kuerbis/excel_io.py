@@ -24,7 +24,7 @@ def importieren(pfad: Path) -> Daten:
     endung = pfad.suffix.lower()
     if endung == ".json":
         try:
-            obj = json.loads(pfad.read_text(encoding="utf-8"))
+            obj = json.loads(pfad.read_text(encoding="utf-8-sig"))  # -sig: verträgt ein BOM
         except (OSError, json.JSONDecodeError) as e:
             raise ValueError(f"Die JSON-Datei kann nicht gelesen werden: {e}") from None
         return daten_aus_dict(obj)
