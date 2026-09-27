@@ -10,6 +10,11 @@ auf `master` automatisch gebaut (GitHub Actions, `.github/workflows/build.yml`).
 
 ## Benutzen
 
+Ausführliche Anleitung für die erste Benutzung (inkl. Windows-Meldung beim ersten Start und Speicherort):
+[anleitung/anleitung.pdf](anleitung/anleitung.pdf) bzw. [anleitung/anleitung.html](anleitung/anleitung.html).
+Nach Änderungen an der HTML-Datei das PDF neu erzeugen:
+`uv run --no-project --with xhtml2pdf python anleitung/pdf_erstellen.py`
+
 1. `Kuerbisverkauf.exe` starten (keine Installation nötig).
 2. Beim ersten Mal: **Importieren…** → die alte Excel-Datei (`Kürbissverkauf 1998-2025.xlsx`) wählen → **Übernehmen**.
 3. Jedes Jahr: **Neue Saison** → Jahr bestätigen → in der Zeile **Neu** Betrag eintippen und Enter drücken.
